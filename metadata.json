@@ -1,0 +1,6 @@
+{
+  "name": "Sangam Community Platform Blueprint",
+  "description": "Comprehensive Mudaliyar Sangam portal with year-wise association members, Credit/Debit financial ledger with RBAC, monthly auto-pay mandates (min ₹100), business ad subscription & archive, Matrimonial Matchmaking Hub, Youth Career & Scholarship Cell, Family Tree, and Digital Member ID Card with event QR check-in.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
