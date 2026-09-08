@@ -8,6 +8,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 export default defineConfig({
+  base: '/mudaliyar-sangam-portal/',
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: {
@@ -20,9 +21,4 @@ export default defineConfig({
     hmr: process.env.DISABLE_HMR !== 'true',
     watch: process.env.DISABLE_HMR === 'true' ? null : {},
   },
-  // vite.config.ts
-  export default defineConfig({
-  base: '/mudaliyar-sangam-portal/', // உங்கள் repository பெயர்
-  plugins: [react(), tailwindcss()],
-  // ...
 });
