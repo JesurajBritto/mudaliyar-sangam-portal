@@ -8,7 +8,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 export default defineConfig({
-  base: '/mudaliyar-sangam-portal/',
+  base: process.env.GITHUB_ACTIONS ? '/mudaliyar-sangam-portal/' : './',
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: {
