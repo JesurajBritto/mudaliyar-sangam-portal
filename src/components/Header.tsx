@@ -28,7 +28,7 @@ import {
   Image as ImageIcon
 } from 'lucide-react';
 import { TabType, Language, AuthUser } from '../types';
-import { loadPortalContent } from '../data/portalContentData';
+import { CompletePortalData, loadPortalContent } from '../data/portalContentData';
 import { SangamLogo } from './SangamLogo';
 
 interface HeaderProps {
@@ -42,6 +42,7 @@ interface HeaderProps {
   onOpenAuth: (mode?: 'login' | 'register' | 'mobile') => void;
   onLogout: () => void;
   onOpenCms?: (tab?: string) => void;
+  portalData?: CompletePortalData;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -54,11 +55,11 @@ export const Header: React.FC<HeaderProps> = ({
   currentUser,
   onOpenAuth,
   onLogout,
-  onOpenCms
+  onOpenCms,
+  portalData: propPortalData
 }) => {
   const isSuperAdmin = currentUser?.role === 'super_admin';
-  const portalData = loadPortalContent();
-  const branding = portalData.branding;
+  const branding = propPortalData?.branding || loadPortalContent().branding;
 
   const navTabs: { id: TabType; labelEn: string; labelTa: string; icon: React.ReactNode }[] = [
     { id: 'home', labelEn: 'Official Homepage', labelTa: 'அதிகாரப்பூர்வ முகப்பு', icon: <Landmark className="w-4 h-4 text-[#801524]" /> },

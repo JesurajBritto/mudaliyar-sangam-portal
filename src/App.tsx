@@ -17,8 +17,10 @@ import { ApiDocsViewer } from './components/ApiDocsViewer';
 import { RbacMatrixViewer } from './components/RbacMatrixViewer';
 import { ArchitectureOverview } from './components/ArchitectureOverview';
 import { SuperAdminMemberManagement } from './components/SuperAdminMemberManagement';
+import { SuperAdminCmsModal } from './components/SuperAdminCmsModal';
 import { AuthModal } from './components/AuthModal';
 import { loadCurrentUser, saveCurrentUser } from './data/authData';
+import { CompletePortalData, loadPortalContent, savePortalContent, broadcastPortalContentUpdate } from './data/portalContentData';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<TabType>('home');
@@ -29,6 +31,37 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(loadCurrentUser);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
   const [authModalInitialMode, setAuthModalInitialMode] = useState<'login' | 'register' | 'mobile'>('login');
+
+  // Global Portal Data & CMS State
+  const [portalData, setPortalData] = useState<CompletePortalData>(loadPortalContent);
+  const [isGlobalCmsOpen, setIsGlobalCmsOpen] = useState<boolean>(false);
+  const [cmsInitialTab, setCmsInitialTab] = useState<string>('ticker');
+
+  useEffect(() => {
+    const handleUpdate = (e: Event) => {
+      const customEvent = e as CustomEvent<CompletePortalData>;
+      if (customEvent.detail) {
+        setPortalData(customEvent.detail);
+      } else {
+        setPortalData(loadPortalContent());
+      }
+    };
+    window.addEventListener('sangam_portal_content_updated', handleUpdate);
+    return () => {
+      window.removeEventListener('sangam_portal_content_updated', handleUpdate);
+    };
+  }, []);
+
+  const handleSavePortalData = (newData: CompletePortalData) => {
+    setPortalData(newData);
+    savePortalContent(newData);
+    broadcastPortalContentUpdate(newData);
+  };
+
+  const handleOpenCms = (tab: string = 'ticker') => {
+    setCmsInitialTab(tab);
+    setIsGlobalCmsOpen(true);
+  };
 
   const handleOpenAuth = (mode: 'login' | 'register' | 'mobile' = 'login') => {
     setAuthModalInitialMode(mode);
@@ -60,6 +93,8 @@ export default function App() {
         currentUser={currentUser}
         onOpenAuth={handleOpenAuth}
         onLogout={handleLogout}
+        onOpenCms={handleOpenCms}
+        portalData={portalData}
       />
 
       {/* Main Content Area */}
@@ -70,6 +105,7 @@ export default function App() {
             language={language}
             onLoginSuccess={handleLoginSuccess}
             initialTab={authModalInitialMode}
+            portalData={portalData}
           />
         ) : (
           /* AFTER SUCCESSFUL LOGIN / REGISTRATION: Show All Unlocked Details and Tabs */
@@ -80,6 +116,9 @@ export default function App() {
                 onNavigateTab={setActiveTab}
                 currentUser={currentUser}
                 onOpenAuth={handleOpenAuth}
+                portalData={portalData}
+                onSaveData={handleSavePortalData}
+                onOpenCms={handleOpenCms}
               />
             )}
 
@@ -236,6 +275,17 @@ export default function App() {
           )}
         </div>
       </footer>
+
+      {/* Super Admin Live CMS Modal (Globally Accessible) */}
+      <SuperAdminCmsModal
+        isOpen={isGlobalCmsOpen}
+        onClose={() => setIsGlobalCmsOpen(false)}
+        portalData={portalData}
+        onSaveData={handleSavePortalData}
+        language={language}
+        initialTab={cmsInitialTab}
+        currentUser={currentUser}
+      />
     </div>
   );
 }

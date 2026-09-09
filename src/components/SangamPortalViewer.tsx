@@ -52,20 +52,52 @@ interface SangamPortalViewerProps {
   onNavigateTab: (tab: TabType) => void;
   currentUser?: AuthUser | null;
   onOpenAuth?: (mode?: 'login' | 'register' | 'mobile') => void;
+  portalData?: CompletePortalData;
+  onSaveData?: (data: CompletePortalData) => void;
+  onOpenCms?: (tab?: string) => void;
 }
 
 export const SangamPortalViewer: React.FC<SangamPortalViewerProps> = ({
   language,
   onNavigateTab,
   currentUser,
-  onOpenAuth
+  onOpenAuth,
+  portalData: propPortalData,
+  onSaveData: propOnSaveData,
+  onOpenCms: propOnOpenCms
 }) => {
-  const [portalData, setPortalData] = useState<CompletePortalData>(loadPortalContent);
+  const [localPortalData, setLocalPortalData] = useState<CompletePortalData>(
+    propPortalData || loadPortalContent()
+  );
+  // Authoritative portal data: reactive single source of truth updated via props and custom events
+  const portalData = propPortalData || localPortalData;
+
   const [isCmsOpen, setIsCmsOpen] = useState(false);
   const [cmsInitialTab, setCmsInitialTab] = useState<string>('ticker');
   const [activeAnnouncementFilter, setActiveAnnouncementFilter] = useState<string>('all');
   const [selectedAnnouncement, setSelectedAnnouncement] = useState<PortalAnnouncement | null>(null);
   const [rsvpEventId, setRsvpEventId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (propPortalData) {
+      setLocalPortalData(propPortalData);
+    }
+  }, [propPortalData]);
+
+  useEffect(() => {
+    const handleUpdate = (e: Event) => {
+      const customEvent = e as CustomEvent<CompletePortalData>;
+      if (customEvent && customEvent.detail) {
+        setLocalPortalData(customEvent.detail);
+      } else {
+        setLocalPortalData(loadPortalContent());
+      }
+    };
+    window.addEventListener('sangam_portal_content_updated', handleUpdate);
+    return () => {
+      window.removeEventListener('sangam_portal_content_updated', handleUpdate);
+    };
+  }, []);
 
   // Super Admin CMS Edit Access is only available when logged in as super_admin
   const isSuperAdmin = currentUser?.role === 'super_admin';
@@ -83,13 +115,20 @@ export const SangamPortalViewer: React.FC<SangamPortalViewerProps> = ({
 
   // Sync content state
   const handleSaveData = (newData: CompletePortalData) => {
-    setPortalData(newData);
+    setLocalPortalData(newData);
     savePortalContent(newData);
+    if (propOnSaveData) {
+      propOnSaveData(newData);
+    }
   };
 
   const openCmsAt = (tab: string) => {
-    setCmsInitialTab(tab);
-    setIsCmsOpen(true);
+    if (propOnOpenCms) {
+      propOnOpenCms(tab);
+    } else {
+      setCmsInitialTab(tab);
+      setIsCmsOpen(true);
+    }
   };
 
   const filteredAnnouncements =
@@ -327,16 +366,16 @@ export const SangamPortalViewer: React.FC<SangamPortalViewerProps> = ({
         <div className="bg-white rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.02)] overflow-hidden flex flex-col sm:flex-row items-stretch border border-[#e8e3d8] relative group">
           <div className="bg-[#801524] text-white px-4 py-3 flex items-center gap-2 font-bold text-xs uppercase tracking-wider whitespace-nowrap shrink-0">
             <Bell className="w-4 h-4 text-amber-300 animate-pulse" />
-            <span>{language === 'en' ? portalData.ticker.badgeEn : portalData.ticker.badgeTa}</span>
+            <span>{language === 'en' ? (portalData.ticker.badgeEn || portalData.ticker.badgeTa) : (portalData.ticker.badgeTa || portalData.ticker.badgeEn)}</span>
           </div>
 
           <div className="px-4 py-3 flex-1 flex items-center justify-between text-xs sm:text-sm font-medium overflow-hidden bg-[#faf8f5]">
             <div className="truncate">
               <span className="font-bold text-[#801524]">
-                {language === 'en' ? portalData.ticker.tagEn : portalData.ticker.tagTa}
+                {language === 'en' ? (portalData.ticker.tagEn || portalData.ticker.tagTa) : (portalData.ticker.tagTa || portalData.ticker.tagEn)}
               </span>{' '}
               <span className="text-stone-800 font-medium">
-                {language === 'en' ? portalData.ticker.textEn : portalData.ticker.textTa}
+                {language === 'en' ? (portalData.ticker.textEn || portalData.ticker.textTa) : (portalData.ticker.textTa || portalData.ticker.textEn)}
               </span>
             </div>
 
@@ -350,7 +389,7 @@ export const SangamPortalViewer: React.FC<SangamPortalViewerProps> = ({
                 }}
                 className="text-xs font-bold text-[#801524] hover:text-stone-900 flex items-center gap-1 cursor-pointer"
               >
-                {language === 'en' ? portalData.ticker.linkTextEn : portalData.ticker.linkTextTa}
+                {language === 'en' ? (portalData.ticker.linkTextEn || portalData.ticker.linkTextTa) : (portalData.ticker.linkTextTa || portalData.ticker.linkTextEn)}
                 <ArrowRight className="w-3.5 h-3.5" />
               </button>
 
@@ -402,20 +441,20 @@ export const SangamPortalViewer: React.FC<SangamPortalViewerProps> = ({
               <SangamLogo branding={portalData.branding} size="lg" showBorder={true} />
               <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#faf6ed] border border-[#e8dcbb] text-[#7e5b0b] text-xs font-semibold tracking-wide shadow-2xs">
                 <Landmark className="w-3.5 h-3.5 text-[#b8860b]" />
-                <span>{language === 'en' ? (portalData.branding?.regNumberEn || portalData.hero.regBadgeEn) : (portalData.branding?.regNumberTa || portalData.hero.regBadgeTa)}</span>
+                <span>{language === 'en' ? (portalData.hero.regBadgeEn || portalData.branding?.regNumberEn) : (portalData.hero.regBadgeTa || portalData.branding?.regNumberTa)}</span>
               </div>
             </div>
 
             <div className="space-y-2">
               <h1 className="text-2xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight text-stone-900 leading-tight font-display">
                 {language === 'en'
-                  ? (portalData.branding?.sangamNameEn || portalData.hero.titleEn)
-                  : (portalData.branding?.sangamNameTa || portalData.hero.titleTa)}
+                  ? (portalData.hero.titleEn || portalData.branding?.sangamNameEn)
+                  : (portalData.hero.titleTa || portalData.branding?.sangamNameTa)}
               </h1>
               <p className="text-[#801524] text-base sm:text-lg font-bold">
                 {language === 'en'
-                  ? (portalData.branding?.subTitleEn || portalData.hero.taglineEn)
-                  : (portalData.branding?.subTitleTa || portalData.hero.taglineTa)}
+                  ? (portalData.hero.taglineEn || portalData.branding?.subTitleEn)
+                  : (portalData.hero.taglineTa || portalData.branding?.subTitleTa)}
               </p>
             </div>
 
@@ -540,26 +579,26 @@ export const SangamPortalViewer: React.FC<SangamPortalViewerProps> = ({
                   </div>
                   <div>
                     <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-[#faf6ed] text-[#7e5b0b] border border-[#e8dcbb]">
-                      {language === 'en' ? lead.badgeEn : lead.badgeTa}
+                      {language === 'en' ? (lead.badgeEn || lead.badgeTa) : (lead.badgeTa || lead.badgeEn)}
                     </span>
                     <h3 className="text-base font-bold text-stone-900 mt-1">
-                      {language === 'en' ? lead.officerNameEn : lead.officerNameTa}
+                      {language === 'en' ? (lead.officerNameEn || lead.officerNameTa) : (lead.officerNameTa || lead.officerNameEn)}
                     </h3>
                     <p className="text-xs text-stone-600 font-medium">
-                      {language === 'en' ? lead.designationEn : lead.designationTa}
+                      {language === 'en' ? (lead.designationEn || lead.designationTa) : (lead.designationTa || lead.designationEn)}
                     </p>
                   </div>
                 </div>
 
                 <p className="text-xs sm:text-sm text-stone-800 leading-relaxed italic border-l-3 border-[#b8860b] pl-3.5">
-                  {language === 'en' ? lead.quoteEn : lead.quoteTa}
+                  {language === 'en' ? (lead.quoteEn || lead.quoteTa) : (lead.quoteTa || lead.quoteEn)}
                 </p>
               </div>
 
               <div className="mt-5 pt-3 border-t border-[#f0ece1] flex items-center justify-between text-xs text-[#7e5b0b] font-semibold">
-                <span>{language === 'en' ? lead.themeFocusEn : lead.themeFocusTa}</span>
+                <span>{language === 'en' ? (lead.themeFocusEn || lead.themeFocusTa) : (lead.themeFocusTa || lead.themeFocusEn)}</span>
                 <span className="text-stone-500 text-[11px]">
-                  {language === 'en' ? lead.locationEn : lead.locationTa}
+                  {language === 'en' ? (lead.locationEn || lead.locationTa) : (lead.locationTa || lead.locationEn)}
                 </span>
               </div>
             </div>
@@ -605,10 +644,10 @@ export const SangamPortalViewer: React.FC<SangamPortalViewerProps> = ({
                   {getPillarIcon(pil.iconType)}
                 </div>
                 <h3 className="text-sm font-bold text-stone-900 mb-1.5 font-display">
-                  {language === 'en' ? pil.titleEn : pil.titleTa}
+                  {language === 'en' ? (pil.titleEn || pil.titleTa) : (pil.titleTa || pil.titleEn)}
                 </h3>
                 <p className="text-xs text-stone-600 leading-relaxed font-normal">
-                  {language === 'en' ? pil.descriptionEn : pil.descriptionTa}
+                  {language === 'en' ? (pil.descriptionEn || pil.descriptionTa) : (pil.descriptionTa || pil.descriptionEn)}
                 </p>
               </div>
             );
@@ -692,11 +731,11 @@ export const SangamPortalViewer: React.FC<SangamPortalViewerProps> = ({
                 </div>
 
                 <h3 className="text-sm font-bold text-stone-900 leading-snug font-display">
-                  {language === 'en' ? ann.titleEn : ann.titleTa}
+                  {language === 'en' ? (ann.titleEn || ann.titleTa) : (ann.titleTa || ann.titleEn)}
                 </h3>
 
                 <p className="text-xs text-stone-600 leading-relaxed font-normal">
-                  {language === 'en' ? ann.summaryEn : ann.summaryTa}
+                  {language === 'en' ? (ann.summaryEn || ann.summaryTa) : (ann.summaryTa || ann.summaryEn)}
                 </p>
 
                 {ann.venue && (
@@ -764,7 +803,7 @@ export const SangamPortalViewer: React.FC<SangamPortalViewerProps> = ({
                 </div>
 
                 <h3 className="text-sm font-bold text-stone-900 leading-snug font-display">
-                  {language === 'en' ? evt.titleEn : evt.titleTa}
+                  {language === 'en' ? (evt.titleEn || evt.titleTa) : (evt.titleTa || evt.titleEn)}
                 </h3>
 
                 <div className="space-y-1.5 text-xs text-stone-600 font-medium">
@@ -778,12 +817,12 @@ export const SangamPortalViewer: React.FC<SangamPortalViewerProps> = ({
                   </div>
                   <div className="flex items-start gap-2">
                     <MapPin className="w-3.5 h-3.5 text-[#b8860b] shrink-0 mt-0.5" />
-                    <span>{language === 'en' ? evt.locationEn : evt.locationTa}</span>
+                    <span>{language === 'en' ? (evt.locationEn || evt.locationTa) : (evt.locationTa || evt.locationEn)}</span>
                   </div>
                 </div>
 
                 <p className="text-xs text-stone-600 leading-relaxed pt-1">
-                  {language === 'en' ? evt.descriptionEn : evt.descriptionTa}
+                  {language === 'en' ? (evt.descriptionEn || evt.descriptionTa) : (evt.descriptionTa || evt.descriptionEn)}
                 </p>
               </div>
 
@@ -1041,12 +1080,12 @@ export const SangamPortalViewer: React.FC<SangamPortalViewerProps> = ({
                 <span>{language === 'en' ? 'Official Headquarters' : 'தலைமையகம் & தொடர்பு'}</span>
               </span>
               <h3 className="text-xl sm:text-2xl font-extrabold text-stone-900 mt-2.5 tracking-tight font-display">
-                {language === 'en' ? portalData.contact.hqTitleEn : portalData.contact.hqTitleTa}
+                {language === 'en' ? (portalData.contact.hqTitleEn || portalData.contact.hqTitleTa) : (portalData.contact.hqTitleTa || portalData.contact.hqTitleEn)}
               </h3>
               <p className="text-xs sm:text-sm text-stone-600 mt-2 leading-relaxed font-normal">
                 {language === 'en'
-                  ? portalData.contact.hqDescriptionEn
-                  : portalData.contact.hqDescriptionTa}
+                  ? (portalData.contact.hqDescriptionEn || portalData.contact.hqDescriptionTa)
+                  : (portalData.contact.hqDescriptionTa || portalData.contact.hqDescriptionEn)}
               </p>
             </div>
 
@@ -1060,7 +1099,7 @@ export const SangamPortalViewer: React.FC<SangamPortalViewerProps> = ({
                     {language === 'en' ? 'Main Headquarters Address:' : 'தலைமை அலுவலக முகவரி:'}
                   </div>
                   <div className="text-stone-600 mt-0.5 font-medium leading-relaxed">
-                    {language === 'en' ? portalData.contact.addressEn : portalData.contact.addressTa}
+                    {language === 'en' ? (portalData.contact.addressEn || portalData.contact.addressTa) : (portalData.contact.addressTa || portalData.contact.addressEn)}
                   </div>
                 </div>
               </div>
@@ -1103,8 +1142,8 @@ export const SangamPortalViewer: React.FC<SangamPortalViewerProps> = ({
                   </div>
                   <div className="text-stone-600 mt-0.5 font-medium">
                     {language === 'en'
-                      ? portalData.contact.workingHoursEn
-                      : portalData.contact.workingHoursTa}
+                      ? (portalData.contact.workingHoursEn || portalData.contact.workingHoursTa)
+                      : (portalData.contact.workingHoursTa || portalData.contact.workingHoursEn)}
                   </div>
                 </div>
               </div>
@@ -1258,7 +1297,7 @@ export const SangamPortalViewer: React.FC<SangamPortalViewerProps> = ({
             </div>
 
             <h3 className="text-base font-bold text-stone-900 leading-snug font-display">
-              {language === 'en' ? selectedAnnouncement.titleEn : selectedAnnouncement.titleTa}
+              {language === 'en' ? (selectedAnnouncement.titleEn || selectedAnnouncement.titleTa) : (selectedAnnouncement.titleTa || selectedAnnouncement.titleEn)}
             </h3>
 
             {selectedAnnouncement.venue && (
@@ -1269,7 +1308,7 @@ export const SangamPortalViewer: React.FC<SangamPortalViewerProps> = ({
             )}
 
             <div className="text-xs sm:text-sm text-stone-700 leading-relaxed space-y-2">
-              <p>{language === 'en' ? selectedAnnouncement.detailsEn : selectedAnnouncement.detailsTa}</p>
+              <p>{language === 'en' ? (selectedAnnouncement.detailsEn || selectedAnnouncement.detailsTa) : (selectedAnnouncement.detailsTa || selectedAnnouncement.detailsEn)}</p>
             </div>
 
             <div className="pt-4 border-t border-[#f0ece1] flex items-center justify-end gap-2">
@@ -1285,16 +1324,18 @@ export const SangamPortalViewer: React.FC<SangamPortalViewerProps> = ({
         </div>
       )}
 
-      {/* Super Admin CMS Modal */}
-      <SuperAdminCmsModal
-        isOpen={isCmsOpen}
-        onClose={() => setIsCmsOpen(false)}
-        portalData={portalData}
-        onSaveData={handleSaveData}
-        language={language}
-        initialTab={cmsInitialTab}
-        currentUser={currentUser}
-      />
+      {/* Super Admin CMS Modal (fallback only if onOpenCms not supplied by parent) */}
+      {!propOnOpenCms && (
+        <SuperAdminCmsModal
+          isOpen={isCmsOpen}
+          onClose={() => setIsCmsOpen(false)}
+          portalData={portalData}
+          onSaveData={handleSaveData}
+          language={language}
+          initialTab={cmsInitialTab}
+          currentUser={currentUser}
+        />
+      )}
     </div>
   );
 };

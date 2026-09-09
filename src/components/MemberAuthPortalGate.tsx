@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Landmark,
   ShieldCheck,
@@ -36,23 +36,48 @@ import {
 } from 'lucide-react';
 import { AuthUser, Language, AddressPrivacyLevel } from '../types';
 import { DEMO_ACCOUNTS, registerNewMember, saveCurrentUser } from '../data/authData';
-import { loadPortalContent } from '../data/portalContentData';
+import { CompletePortalData, loadPortalContent } from '../data/portalContentData';
 import { SangamLogo } from './SangamLogo';
 
 interface MemberAuthPortalGateProps {
   language: Language;
   onLoginSuccess: (user: AuthUser) => void;
   initialTab?: 'login' | 'register' | 'mobile';
+  portalData?: CompletePortalData;
 }
 
 export const MemberAuthPortalGate: React.FC<MemberAuthPortalGateProps> = ({
   language,
   onLoginSuccess,
-  initialTab = 'login'
+  initialTab = 'login',
+  portalData: propPortalData
 }) => {
   const [activeTab, setActiveTab] = useState<'login' | 'register' | 'mobile'>(initialTab);
   const [copiedUrl, setCopiedUrl] = useState(false);
-  const portalData = loadPortalContent();
+  const [portalData, setPortalData] = useState<CompletePortalData>(
+    propPortalData || loadPortalContent()
+  );
+
+  useEffect(() => {
+    if (propPortalData) {
+      setPortalData(propPortalData);
+    }
+  }, [propPortalData]);
+
+  useEffect(() => {
+    const handleUpdate = (e: Event) => {
+      const customEvent = e as CustomEvent<CompletePortalData>;
+      if (customEvent.detail) {
+        setPortalData(customEvent.detail);
+      } else {
+        setPortalData(loadPortalContent());
+      }
+    };
+    window.addEventListener('sangam_portal_content_updated', handleUpdate);
+    return () => {
+      window.removeEventListener('sangam_portal_content_updated', handleUpdate);
+    };
+  }, []);
 
   // Login form state
   const [loginPhone, setLoginPhone] = useState('');

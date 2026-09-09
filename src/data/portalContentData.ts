@@ -483,9 +483,19 @@ export function loadPortalContent(): CompletePortalData {
   return INITIAL_PORTAL_DATA;
 }
 
+export function broadcastPortalContentUpdate(data: CompletePortalData): void {
+  if (typeof window !== 'undefined') {
+    // Schedule asynchronous dispatch so it does not interrupt any active React render cycle
+    setTimeout(() => {
+      window.dispatchEvent(new CustomEvent('sangam_portal_content_updated', { detail: data }));
+    }, 0);
+  }
+}
+
 export function savePortalContent(data: CompletePortalData): void {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    broadcastPortalContentUpdate(data);
   } catch (err) {
     console.error('Error writing portal content to localStorage', err);
   }
@@ -494,6 +504,7 @@ export function savePortalContent(data: CompletePortalData): void {
 export function resetPortalContentToDefault(): CompletePortalData {
   try {
     localStorage.removeItem(STORAGE_KEY);
+    broadcastPortalContentUpdate(INITIAL_PORTAL_DATA);
   } catch (err) {
     console.error('Error clearing portal content', err);
   }
