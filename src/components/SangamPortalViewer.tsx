@@ -52,6 +52,7 @@ interface SangamPortalViewerProps {
   onNavigateTab: (tab: TabType) => void;
   currentUser?: AuthUser | null;
   onOpenAuth?: (mode?: 'login' | 'register' | 'mobile') => void;
+  onOpenProfile?: () => void;
   portalData?: CompletePortalData;
   onSaveData?: (data: CompletePortalData) => void;
   onOpenCms?: (tab?: string) => void;
@@ -62,6 +63,7 @@ export const SangamPortalViewer: React.FC<SangamPortalViewerProps> = ({
   onNavigateTab,
   currentUser,
   onOpenAuth,
+  onOpenProfile,
   portalData: propPortalData,
   onSaveData: propOnSaveData,
   onOpenCms: propOnOpenCms
@@ -342,11 +344,12 @@ export const SangamPortalViewer: React.FC<SangamPortalViewerProps> = ({
           <div className="flex items-center gap-2 self-end md:self-auto flex-wrap">
             <button
               type="button"
-              onClick={() => onNavigateTab('digital-id')}
-              className="px-3.5 py-2 rounded-xl bg-stone-900 hover:bg-black text-white font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+              onClick={() => onOpenProfile ? onOpenProfile() : onNavigateTab('address-book')}
+              className="px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+              title={language === 'ta' ? 'ஸ்மார்ட் அடையாள அட்டை' : 'Digital Member Smart ID Card'}
             >
-              <CreditCard className="w-3.5 h-3.5 text-amber-400" />
-              <span>{language === 'ta' ? 'டிஜிட்டல் ஐடி கார்டு' : 'My Digital ID'}</span>
+              <CreditCard className="w-3.5 h-3.5 text-amber-200" />
+              <span>{language === 'ta' ? 'ஸ்மார்ட் ஐடி அட்டை' : 'Smart ID Card'}</span>
             </button>
 
             <button
@@ -946,17 +949,17 @@ export const SangamPortalViewer: React.FC<SangamPortalViewerProps> = ({
 
           <button
             type="button"
-            onClick={() => onNavigateTab('digital-id')}
-            className="p-4 rounded-3xl bg-white border border-[#e8e3d8] hover:border-purple-400 shadow-[0_2px_10px_rgba(0,0,0,0.02)] text-left transition-all group cursor-pointer"
+            onClick={() => onOpenProfile ? onOpenProfile() : onNavigateTab('address-book')}
+            className="p-4 rounded-3xl bg-white border border-[#e8e3d8] hover:border-amber-400 shadow-[0_2px_10px_rgba(0,0,0,0.02)] text-left transition-all group cursor-pointer"
           >
-            <div className="w-9 h-9 rounded-2xl bg-purple-50 text-purple-700 border border-purple-200 flex items-center justify-center mb-2.5 group-hover:scale-105 transition-transform font-bold">
+            <div className="w-9 h-9 rounded-2xl bg-amber-50 text-amber-800 border border-amber-200 flex items-center justify-center mb-2.5 group-hover:scale-105 transition-transform font-bold">
               <CreditCard className="w-4.5 h-4.5" />
             </div>
             <h4 className="text-xs sm:text-sm font-bold text-stone-900 font-display">
-              {language === 'en' ? 'Digital Member ID' : 'டிஜிட்டல் அட்டை'}
+              {language === 'en' ? 'Digital Member Smart ID' : 'டிஜிட்டல் ஸ்மார்ட் அட்டை'}
             </h4>
             <p className="text-[11px] text-stone-500 mt-1">
-              {language === 'en' ? 'QR Badge & Event Entry' : 'QR உறுப்பினர் அட்டை'}
+              {language === 'en' ? 'Smart Card & Address' : 'சுயவிவரம் & அட்டை'}
             </p>
           </button>
 

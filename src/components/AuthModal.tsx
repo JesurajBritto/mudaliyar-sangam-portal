@@ -17,10 +17,14 @@ import {
   Copy,
   Check,
   Home,
-  Lock
+  Lock,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import { AuthUser, Language, AddressPrivacyLevel } from '../types';
-import { DEMO_ACCOUNTS, registerNewMember, saveCurrentUser } from '../data/authData';
+import { DEMO_ACCOUNTS, registerNewMember, saveCurrentUser, authenticateUser } from '../data/authData';
+import { RegistrationReviewModal, RegistrationReviewData } from './RegistrationReviewModal';
+import { ForgotPasswordModal } from './ForgotPasswordModal';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -44,6 +48,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [loginPhone, setLoginPhone] = useState('');
   const [loginPassword, setLoginPassword] = useState('123456');
   const [loginError, setLoginError] = useState('');
+  const [isForgotPasswordOpen, setIsForgotPasswordOpen] = useState(false);
 
   // Register form state
   const [regFullName, setRegFullName] = useState('');
@@ -52,6 +57,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [regEmail, setRegEmail] = useState('');
   const [regAge, setRegAge] = useState<number | string>('');
   const [regGender, setRegGender] = useState<'male' | 'female' | 'other'>('male');
+
+  // Username identifier choice and password for next login
+  const [regUsernameChoice, setRegUsernameChoice] = useState<'mobile' | 'email'>('mobile');
+  const [regPassword, setRegPassword] = useState('123456');
+  const [regConfirmPassword, setRegConfirmPassword] = useState('123456');
+  const [showRegPassword, setShowRegPassword] = useState(false);
+
+  // Review & Verification Modal state
+  const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
+  const [reviewData, setReviewData] = useState<RegistrationReviewData | null>(null);
 
   // Address fields (Required)
   const [regDoorNumber, setRegDoorNumber] = useState('');
@@ -88,42 +103,66 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const handleManualLogin = (e: React.FormEvent) => {
     e.preventDefault();
     if (!loginPhone.trim()) {
-      setLoginError(language === 'ta' ? 'மொபைல் எண் அல்லது உறுப்பினர் எண்ணை உள்ளிடவும்' : 'Please enter Phone or Member ID');
+      setLoginError(
+        language === 'ta'
+          ? 'மொபைல் எண் / மின்னஞ்சல் / பயனர் பெயரை உள்ளிடவும்'
+          : 'Please enter Mobile Number, Email, or Username'
+      );
       return;
     }
 
-    const existing = DEMO_ACCOUNTS.find(
-      (a) => a.phone === loginPhone.trim() || a.membershipCode.toLowerCase() === loginPhone.trim().toLowerCase()
-    );
-
-    if (existing) {
-      saveCurrentUser(existing);
-      onLoginSuccess(existing);
+    const authRes = authenticateUser(loginPhone, loginPassword);
+    if (authRes.success && authRes.user) {
+      saveCurrentUser(authRes.user);
+      onLoginSuccess(authRes.user);
       onClose();
     } else {
-      const genericMember: AuthUser = {
-        id: `user-${Date.now()}`,
-        fullName: 'Member User',
-        fullNameTa: 'சங்க உறுப்பினர்',
-        phone: loginPhone.trim(),
-        email: 'member@mudaliyarsangam.org',
-        membershipCode: `MS-2026-${Math.floor(1000 + Math.random() * 9000)}`,
-        role: 'member',
-        branch: 'District Branch',
-        district: 'Tamil Nadu',
-        city: 'Chennai',
-        isVerified: true
-      };
-      saveCurrentUser(genericMember);
-      onLoginSuccess(genericMember);
-      onClose();
+      setLoginError(
+        authRes.error ||
+          (language === 'ta'
+            ? 'தவறான கணக்கு விவரங்கள் அல்லது கடவுச்சொல்'
+            : 'Invalid credentials or password')
+      );
     }
   };
 
-  const handleRegisterSubmit = (e: React.FormEvent) => {
+  const handleInitiateRegister = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!regFullName.trim() || !regPhone.trim()) {
-      alert(language === 'ta' ? 'பெயர் மற்றும் மொபைல் எண் அவசியம்' : 'Name and Mobile Number are required');
+    if (!regFullName.trim()) {
+      alert(language === 'ta' ? 'முழு பெயர் கட்டாயம்' : 'Full Name is required');
+      return;
+    }
+    const cleanPhone = regPhone.replace(/\D/g, '');
+    if (cleanPhone.length < 10) {
+      alert(
+        language === 'ta'
+          ? 'தயவுசெய்து சரியான 10 இலக்க மொபைல் எண்ணை உள்ளிடவும்'
+          : 'Please enter a valid 10-digit mobile number'
+      );
+      return;
+    }
+    if (regUsernameChoice === 'email' && (!regEmail.trim() || !regEmail.includes('@'))) {
+      alert(
+        language === 'ta'
+          ? 'பயனர் பெயராக மின்னஞ்சலைத் தேர்ந்தெடுத்துள்ளதால் சரியான மின்னஞ்சல் முகவரியை உள்ளிடவும்'
+          : 'Please provide a valid Email Address since Email is selected as Username'
+      );
+      return;
+    }
+    if (!regPassword || regPassword.length < 6) {
+      alert(
+        language === 'ta'
+          ? 'கடவுச்சொல் குறைந்தது 6 எழுத்துகள் இருக்க வேண்டும்'
+          : 'Password must be at least 6 characters'
+      );
+      return;
+    }
+    if (regPassword !== regConfirmPassword) {
+      alert(
+        language === 'ta'
+          ? 'கடவுச்சொற்கள் பொருந்தவில்லை. சரிபார்க்கவும்.'
+          : 'Passwords do not match. Please verify.'
+      );
       return;
     }
     if (!regDoorNumber.trim() || !regStreetName.trim() || !regCity.trim() || !regPincode.trim()) {
@@ -135,26 +174,58 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       return;
     }
 
-    const newUser = registerNewMember({
-      fullName: regFullName,
-      fullNameTa: regFullNameTa || regFullName,
-      phone: regPhone,
-      email: regEmail,
-      age: regAge ? Number(regAge) : 35,
-      gender: regGender,
-      doorNumber: regDoorNumber,
-      streetName: regStreetName,
-      areaLocality: regAreaLocality || regCity,
-      city: regCity,
+    const chosenUsername = regUsernameChoice === 'email' ? regEmail.trim() : cleanPhone;
+    const reviewPayload: RegistrationReviewData = {
+      fullName: regFullName.trim(),
+      fullNameTa: regFullNameTa.trim() || regFullName.trim(),
+      phone: cleanPhone,
+      email: regEmail.trim(),
+      username: chosenUsername,
+      password: regPassword,
+      doorNumber: regDoorNumber.trim(),
+      streetName: regStreetName.trim(),
+      areaLocality: regAreaLocality.trim() || regCity.trim(),
+      city: regCity.trim(),
       district: regDistrict,
       state: regState,
-      pincode: regPincode,
+      pincode: regPincode.trim(),
+      age: regAge ? Number(regAge) : 35,
+      gender: regGender,
       branch: regBranch || `${regDistrict} Branch`,
-      occupation: regOccupation || 'Community Member',
+      occupation: regOccupation.trim() || 'Community Member',
       bloodGroup: regBloodGroup,
       privacyLevel: regPrivacyLevel
+    };
+
+    setReviewData(reviewPayload);
+    setIsReviewModalOpen(true);
+  };
+
+  const handleFinalConfirmRegistration = () => {
+    if (!reviewData) return;
+    const newUser = registerNewMember({
+      fullName: reviewData.fullName,
+      fullNameTa: reviewData.fullNameTa,
+      phone: reviewData.phone,
+      email: reviewData.email,
+      username: reviewData.username,
+      password: reviewData.password,
+      age: reviewData.age,
+      gender: reviewData.gender,
+      doorNumber: reviewData.doorNumber,
+      streetName: reviewData.streetName,
+      areaLocality: reviewData.areaLocality,
+      city: reviewData.city,
+      district: reviewData.district,
+      state: reviewData.state,
+      pincode: reviewData.pincode,
+      branch: reviewData.branch,
+      occupation: reviewData.occupation,
+      bloodGroup: reviewData.bloodGroup,
+      privacyLevel: reviewData.privacyLevel
     });
 
+    setIsReviewModalOpen(false);
     setRegSuccessUser(newUser);
     setTimeout(() => {
       onLoginSuccess(newUser);
@@ -317,7 +388,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
                 <div>
                   <label className="block text-xs font-bold text-stone-700 mb-1">
-                    {language === 'ta' ? 'மொபைல் எண் அல்லது உறுப்பினர் எண்' : 'Mobile Number or Member Code'}
+                    {language === 'ta'
+                      ? 'பயனர் பெயர் / மொபைல் எண் / மின்னஞ்சல்'
+                      : 'Username / Mobile Number / Email'}
                   </label>
                   <div className="relative">
                     <Phone className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
@@ -325,7 +398,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                       type="text"
                       value={loginPhone}
                       onChange={(e) => setLoginPhone(e.target.value)}
-                      placeholder="9840012345 / MS-ADM-001"
+                      placeholder="e.g. 9840012345 / member@gmail.com / MS-ADM-001"
                       className="w-full pl-9 pr-3 py-2.5 text-xs rounded-xl border border-stone-300 bg-white text-stone-900 focus:ring-2 focus:ring-amber-500 font-medium"
                     />
                   </div>
@@ -333,7 +406,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
                 <div>
                   <label className="block text-xs font-bold text-stone-700 mb-1">
-                    {language === 'ta' ? 'கடவுச்சொல் / OTP' : 'Password / OTP'}
+                    {language === 'ta' ? 'கடவுச்சொல் (Password)' : 'Password'}
                   </label>
                   <div className="relative">
                     <Lock className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
@@ -344,6 +417,17 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                       placeholder="••••••"
                       className="w-full pl-9 pr-3 py-2.5 text-xs rounded-xl border border-stone-300 bg-white text-stone-900 focus:ring-2 focus:ring-amber-500 font-medium"
                     />
+                  </div>
+                  <div className="flex justify-end mt-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setIsForgotPasswordOpen(true)}
+                      className="text-xs text-amber-800 hover:text-amber-950 font-bold underline cursor-pointer"
+                    >
+                      {language === 'ta'
+                        ? 'கடவுச்சொல்லை மறந்துவிட்டீர்களா?'
+                        : 'Forgot Password?'}
+                    </button>
                   </div>
                 </div>
 
@@ -372,7 +456,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   </div>
                 </div>
               ) : (
-                <form onSubmit={handleRegisterSubmit} className="space-y-4">
+                <form onSubmit={handleInitiateRegister} className="space-y-4">
                   {/* Section 1: Personal */}
                   <div className="space-y-2.5">
                     <div className="flex items-center gap-2 pb-1 border-b border-stone-200">
@@ -417,27 +501,36 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                         <label className="block text-[11px] font-bold text-stone-700 mb-1">
                           {language === 'ta' ? 'மொபைல் எண் *' : 'Mobile Number *'}
                         </label>
-                        <input
-                          type="tel"
-                          required
-                          value={regPhone}
-                          onChange={(e) => setRegPhone(e.target.value)}
-                          placeholder="9876543210"
-                          className="w-full px-3 py-2 text-xs rounded-xl border border-stone-300 bg-white text-stone-900 focus:ring-2 focus:ring-amber-500 font-medium"
-                        />
+                        <div className="relative">
+                          <Phone className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
+                          <input
+                            type="tel"
+                            required
+                            maxLength={10}
+                            value={regPhone}
+                            onChange={(e) => setRegPhone(e.target.value.replace(/\D/g, ''))}
+                            placeholder="9876543210"
+                            className="w-full pl-8 pr-3 py-2 text-xs rounded-xl border border-stone-300 bg-white text-stone-900 focus:ring-2 focus:ring-amber-500 font-medium"
+                          />
+                        </div>
                       </div>
+
                       <div>
                         <label className="block text-[11px] font-bold text-stone-700 mb-1">
                           {language === 'ta' ? 'மின்னஞ்சல்' : 'Email Address'}
                         </label>
-                        <input
-                          type="email"
-                          value={regEmail}
-                          onChange={(e) => setRegEmail(e.target.value)}
-                          placeholder="name@gmail.com"
-                          className="w-full px-3 py-2 text-xs rounded-xl border border-stone-300 bg-white text-stone-900 focus:ring-2 focus:ring-amber-500 font-medium"
-                        />
+                        <div className="relative">
+                          <Mail className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
+                          <input
+                            type="email"
+                            value={regEmail}
+                            onChange={(e) => setRegEmail(e.target.value)}
+                            placeholder="name@gmail.com"
+                            className="w-full pl-8 pr-3 py-2 text-xs rounded-xl border border-stone-300 bg-white text-stone-900 focus:ring-2 focus:ring-amber-500 font-medium"
+                          />
+                        </div>
                       </div>
+
                       <div className="grid grid-cols-2 gap-1.5">
                         <div>
                           <label className="block text-[11px] font-bold text-stone-700 mb-1">
@@ -464,6 +557,103 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                             <option value="female">Female</option>
                             <option value="other">Other</option>
                           </select>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Account Credentials (Username Identifier & Password for Next Login) */}
+                    <div className="p-3 bg-amber-50/70 border border-amber-200 rounded-2xl space-y-2.5">
+                      <div className="flex items-center gap-1.5">
+                        <KeyRound className="w-3.5 h-3.5 text-amber-700" />
+                        <span className="text-[11px] font-bold text-amber-950 uppercase tracking-wider">
+                          {language === 'ta'
+                            ? 'அடுத்த உள்நுழைவுக்கான பயனர் பெயர் & கடவுச்சொல்'
+                            : 'Username & Password for Next Login'}
+                        </span>
+                      </div>
+
+                      <div>
+                        <label className="block text-[10.5px] font-bold text-stone-700 mb-1">
+                          {language === 'ta'
+                            ? 'உள்நுழைவு பயனர் பெயராக எதைப் பயன்படுத்த விரும்புகிறீர்கள்?'
+                            : 'Select Login Username Identifier:'}
+                        </label>
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setRegUsernameChoice('mobile')}
+                            className={`p-1.5 rounded-xl border text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                              regUsernameChoice === 'mobile'
+                                ? 'border-amber-600 bg-amber-600 text-white shadow-2xs'
+                                : 'border-stone-300 bg-white text-stone-700 hover:bg-stone-50'
+                            }`}
+                          >
+                            <Phone className="w-3 h-3" />
+                            <span>{language === 'ta' ? 'மொபைல் எண்' : 'Mobile Number'}</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setRegUsernameChoice('email')}
+                            className={`p-1.5 rounded-xl border text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                              regUsernameChoice === 'email'
+                                ? 'border-amber-600 bg-amber-600 text-white shadow-2xs'
+                                : 'border-stone-300 bg-white text-stone-700 hover:bg-stone-50'
+                            }`}
+                          >
+                            <Mail className="w-3 h-3" />
+                            <span>{language === 'ta' ? 'மின்னஞ்சல்' : 'Email Address'}</span>
+                          </button>
+                        </div>
+                        <p className="text-[10px] text-amber-800 mt-1 font-medium">
+                          {language === 'ta' ? 'பயனர் பெயர்: ' : 'Username: '}
+                          <strong>
+                            {regUsernameChoice === 'mobile'
+                              ? regPhone || (language === 'ta' ? 'உங்கள் மொபைல் எண்' : 'Your Mobile Number')
+                              : regEmail || (language === 'ta' ? 'உங்கள் மின்னஞ்சல் முகவரி' : 'Your Email Address')}
+                          </strong>
+                        </p>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                        <div>
+                          <label className="block text-[10.5px] font-bold text-stone-700 mb-1">
+                            {language === 'ta' ? 'புதிய கடவுச்சொல் *' : 'Set Password (Min 6 chars) *'}
+                          </label>
+                          <div className="relative">
+                            <Lock className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
+                            <input
+                              type={showRegPassword ? 'text' : 'password'}
+                              required
+                              value={regPassword}
+                              onChange={(e) => setRegPassword(e.target.value)}
+                              placeholder="••••••"
+                              className="w-full pl-8 pr-8 py-1.5 text-xs rounded-xl border border-stone-300 bg-white text-stone-900 focus:ring-2 focus:ring-amber-500 font-medium"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setShowRegPassword(!showRegPassword)}
+                              className="absolute right-2 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600 cursor-pointer"
+                            >
+                              {showRegPassword ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                            </button>
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="block text-[10.5px] font-bold text-stone-700 mb-1">
+                            {language === 'ta' ? 'கடவுச்சொல் உறுதிப்படுத்தல் *' : 'Confirm Password *'}
+                          </label>
+                          <div className="relative">
+                            <Lock className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
+                            <input
+                              type={showRegPassword ? 'text' : 'password'}
+                              required
+                              value={regConfirmPassword}
+                              onChange={(e) => setRegConfirmPassword(e.target.value)}
+                              placeholder="••••••"
+                              className="w-full pl-8 pr-3 py-1.5 text-xs rounded-xl border border-stone-300 bg-white text-stone-900 focus:ring-2 focus:ring-amber-500 font-medium"
+                            />
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -621,10 +811,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
                   <button
                     type="submit"
-                    className="w-full py-3.5 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl text-xs transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer mt-3"
+                    className="w-full py-3.5 bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-700 hover:to-amber-800 text-white font-bold rounded-xl text-xs transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer mt-3"
                   >
                     <UserCheck className="w-4 h-4" />
-                    <span>{language === 'ta' ? 'பதிவு செய்து முகவரி புத்தகத்தில் சேமிக்க' : 'Register & Save to Address Book'}</span>
+                    <span>
+                      {language === 'ta'
+                        ? 'விவரங்களைச் சரிபார்த்து பதிவு செய்ய'
+                        : 'Proceed to Review Details & Register'}
+                    </span>
                   </button>
                 </form>
               )}
@@ -670,6 +864,33 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           )}
         </div>
       </div>
+
+      {/* Review Details & Email Verification Modal */}
+      {isReviewModalOpen && reviewData && (
+        <RegistrationReviewModal
+          isOpen={isReviewModalOpen}
+          onClose={() => setIsReviewModalOpen(false)}
+          onEditDetails={() => setIsReviewModalOpen(false)}
+          language={language}
+          data={reviewData}
+          onConfirmSuccess={handleFinalConfirmRegistration}
+        />
+      )}
+
+      {/* Forgot Password Modal */}
+      {isForgotPasswordOpen && (
+        <ForgotPasswordModal
+          isOpen={isForgotPasswordOpen}
+          onClose={() => setIsForgotPasswordOpen(false)}
+          language={language}
+          initialIdentifier={loginPhone}
+          onSuccessLogin={(user) => {
+            setIsForgotPasswordOpen(false);
+            onLoginSuccess(user);
+            onClose();
+          }}
+        />
+      )}
     </div>
   );
 };

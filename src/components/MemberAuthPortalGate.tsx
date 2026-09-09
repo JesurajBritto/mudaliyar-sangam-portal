@@ -35,9 +35,11 @@ import {
   GraduationCap
 } from 'lucide-react';
 import { AuthUser, Language, AddressPrivacyLevel } from '../types';
-import { DEMO_ACCOUNTS, registerNewMember, saveCurrentUser } from '../data/authData';
+import { DEMO_ACCOUNTS, registerNewMember, saveCurrentUser, authenticateUser } from '../data/authData';
 import { CompletePortalData, loadPortalContent } from '../data/portalContentData';
 import { SangamLogo } from './SangamLogo';
+import { RegistrationReviewModal, RegistrationReviewData } from './RegistrationReviewModal';
+import { ForgotPasswordModal } from './ForgotPasswordModal';
 
 interface MemberAuthPortalGateProps {
   language: Language;
@@ -83,6 +85,7 @@ export const MemberAuthPortalGate: React.FC<MemberAuthPortalGateProps> = ({
   const [loginPhone, setLoginPhone] = useState('');
   const [loginPassword, setLoginPassword] = useState('123456');
   const [loginError, setLoginError] = useState('');
+  const [isForgotPasswordOpen, setIsForgotPasswordOpen] = useState(false);
 
   // Register form state (Personal, Contact, and Detailed Address)
   const [regFullName, setRegFullName] = useState('');
@@ -91,6 +94,16 @@ export const MemberAuthPortalGate: React.FC<MemberAuthPortalGateProps> = ({
   const [regEmail, setRegEmail] = useState('');
   const [regAge, setRegAge] = useState<number | string>('');
   const [regGender, setRegGender] = useState<'male' | 'female' | 'other'>('male');
+
+  // Username identifier choice and password for next login
+  const [regUsernameChoice, setRegUsernameChoice] = useState<'mobile' | 'email'>('mobile');
+  const [regPassword, setRegPassword] = useState('123456');
+  const [regConfirmPassword, setRegConfirmPassword] = useState('123456');
+  const [showRegPassword, setShowRegPassword] = useState(false);
+
+  // Review & Verification Modal state
+  const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
+  const [reviewData, setReviewData] = useState<RegistrationReviewData | null>(null);
 
   // Address fields (Required)
   const [regDoorNumber, setRegDoorNumber] = useState('');
@@ -123,51 +136,52 @@ export const MemberAuthPortalGate: React.FC<MemberAuthPortalGateProps> = ({
 
   const handleManualLogin = (e: React.FormEvent) => {
     e.preventDefault();
+    setLoginError('');
+
     if (!loginPhone.trim()) {
       setLoginError(
         language === 'ta'
-          ? 'தயவுசெய்து மொபைல் எண் அல்லது உறுப்பினர் அடையாள எண்ணை உள்ளிடவும்'
-          : 'Please enter your registered Mobile Number or Member ID'
+          ? 'தயவுசெய்து மொபைல் எண் அல்லது மின்னஞ்சல் அல்லது பயனர் பெயரை உள்ளிடவும்'
+          : 'Please enter your registered Username, Mobile Number, or Email'
       );
       return;
     }
 
-    const existing = DEMO_ACCOUNTS.find(
-      (a) =>
-        a.phone === loginPhone.trim() ||
-        a.membershipCode.toLowerCase() === loginPhone.trim().toLowerCase()
-    );
+    if (!loginPassword) {
+      setLoginError(
+        language === 'ta'
+          ? 'தயவுசெய்து கடவுச்சொல்லை உள்ளிடவும்'
+          : 'Please enter your password'
+      );
+      return;
+    }
 
-    if (existing) {
-      saveCurrentUser(existing);
-      onLoginSuccess(existing);
+    const authRes = authenticateUser(loginPhone.trim(), loginPassword);
+    if (authRes.success && authRes.user) {
+      saveCurrentUser(authRes.user);
+      onLoginSuccess(authRes.user);
     } else {
-      const dynamicUser: AuthUser = {
-        id: `user-${Date.now()}`,
-        fullName: 'Member User',
-        fullNameTa: 'சங்க உறுப்பினர்',
-        phone: loginPhone.trim(),
-        email: 'member@mudaliyarsangam.org',
-        membershipCode: `MS-2026-${Math.floor(1000 + Math.random() * 9000)}`,
-        role: 'member',
-        branch: 'General Member Wing',
-        district: 'Tamil Nadu',
-        city: 'Chennai',
-        nativePlace: 'Tamil Nadu',
-        occupation: 'Professional / Business',
-        bloodGroup: 'O+',
-        joinedDate: new Date().toISOString().split('T')[0],
-        isVerified: true
-      };
-      saveCurrentUser(dynamicUser);
-      onLoginSuccess(dynamicUser);
+      setLoginError(
+        authRes.error ||
+          (language === 'ta'
+            ? 'தவறான பயனர் பெயர் அல்லது கடவுச்சொல். தயவுசெய்து மீண்டும் சரிபார்க்கவும்.'
+            : 'Invalid credentials. Please verify username and password.')
+      );
     }
   };
 
   const handleRegisterSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!regFullName.trim() || !regPhone.trim()) {
-      alert(language === 'ta' ? 'பெயர் மற்றும் மொபைல் எண் கட்டாயம்' : 'Full Name and Mobile number are required');
+    if (!regFullName.trim()) {
+      alert(language === 'ta' ? 'பெயர் கட்டாயம்' : 'Full Name is required');
+      return;
+    }
+    if (!regPhone.trim()) {
+      alert(language === 'ta' ? 'மொபைல் எண் கட்டாயம்' : 'Mobile Number is required');
+      return;
+    }
+    if (!regEmail.trim()) {
+      alert(language === 'ta' ? 'மின்னஞ்சல் முகவரி கட்டாயம்' : 'Email Address is required');
       return;
     }
     if (!regDoorNumber.trim() || !regStreetName.trim() || !regCity.trim() || !regPincode.trim()) {
@@ -179,30 +193,84 @@ export const MemberAuthPortalGate: React.FC<MemberAuthPortalGateProps> = ({
       return;
     }
 
-    const newUser = registerNewMember({
-      fullName: regFullName,
-      fullNameTa: regFullNameTa || regFullName,
-      phone: regPhone,
-      email: regEmail,
-      age: regAge ? Number(regAge) : 35,
-      gender: regGender,
-      doorNumber: regDoorNumber,
-      streetName: regStreetName,
-      areaLocality: regAreaLocality || regCity,
-      city: regCity,
+    if (!regPassword || regPassword.length < 6) {
+      alert(
+        language === 'ta'
+          ? 'கடவுச்சொல் குறைந்தது 6 எழுத்துகள் இருக்க வேண்டும்'
+          : 'Password must be at least 6 characters'
+      );
+      return;
+    }
+
+    if (regPassword !== regConfirmPassword) {
+      alert(
+        language === 'ta'
+          ? 'கடவுச்சொற்கள் பொருந்தவில்லை. மீண்டும் சரிபார்க்கவும்.'
+          : 'Passwords do not match. Please verify.'
+      );
+      return;
+    }
+
+    const cleanPhone = regPhone.replace(/\D/g, '');
+    const chosenUsername = regUsernameChoice === 'email' ? regEmail.trim() : cleanPhone;
+
+    // Prepare Review Data
+    const data: RegistrationReviewData = {
+      fullName: regFullName.trim(),
+      fullNameTa: regFullNameTa.trim() || regFullName.trim(),
+      phone: cleanPhone,
+      email: regEmail.trim(),
+      username: chosenUsername,
+      password: regPassword,
+      doorNumber: regDoorNumber.trim(),
+      streetName: regStreetName.trim(),
+      areaLocality: regAreaLocality.trim() || regCity.trim(),
+      city: regCity.trim(),
       district: regDistrict,
       state: regState,
-      pincode: regPincode,
+      pincode: regPincode.trim(),
+      age: regAge ? Number(regAge) : 35,
+      gender: regGender,
       branch: regBranch || `${regDistrict} Branch`,
-      occupation: regOccupation || 'Community Member',
+      occupation: regOccupation.trim() || 'Community Member',
       bloodGroup: regBloodGroup,
       privacyLevel: regPrivacyLevel
+    };
+
+    setReviewData(data);
+    setIsReviewModalOpen(true);
+  };
+
+  const handleFinalConfirmRegistration = () => {
+    if (!reviewData) return;
+
+    const newUser = registerNewMember({
+      fullName: reviewData.fullName,
+      fullNameTa: reviewData.fullNameTa,
+      phone: reviewData.phone,
+      email: reviewData.email,
+      username: reviewData.username,
+      password: reviewData.password,
+      age: reviewData.age,
+      gender: reviewData.gender,
+      doorNumber: reviewData.doorNumber,
+      streetName: reviewData.streetName,
+      areaLocality: reviewData.areaLocality,
+      city: reviewData.city,
+      district: reviewData.district,
+      state: reviewData.state,
+      pincode: reviewData.pincode,
+      branch: reviewData.branch,
+      occupation: reviewData.occupation,
+      bloodGroup: reviewData.bloodGroup,
+      privacyLevel: reviewData.privacyLevel
     });
 
+    setIsReviewModalOpen(false);
     setRegSuccessUser(newUser);
     setTimeout(() => {
       onLoginSuccess(newUser);
-    }, 2000);
+    }, 1800);
   };
 
   const tamilNaduDistricts = [
@@ -433,8 +501,8 @@ export const MemberAuthPortalGate: React.FC<MemberAuthPortalGateProps> = ({
                   <div>
                     <label className="block text-xs font-semibold text-stone-800 mb-1.5">
                       {language === 'ta'
-                        ? 'பதிவு செய்யப்பட்ட மொபைல் எண் அல்லது உறுப்பினர் எண்'
-                        : 'Registered Mobile Number or Member Code'}
+                        ? 'பயனர் பெயர் / மொபைல் எண் / மின்னஞ்சல்'
+                        : 'Username / Mobile Number / Email'}
                     </label>
                     <div className="relative">
                       <Phone className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400" />
@@ -442,7 +510,7 @@ export const MemberAuthPortalGate: React.FC<MemberAuthPortalGateProps> = ({
                         type="text"
                         value={loginPhone}
                         onChange={(e) => setLoginPhone(e.target.value)}
-                        placeholder="எ.கா. 9840012345 அல்லது MS-ADM-001"
+                        placeholder="எ.கா. 9840012345 / member@gmail.com / MS-ADM-001"
                         className="w-full pl-10 pr-3 py-3 text-sm rounded-xl border border-[#e0d9cc] bg-[#faf8f5] text-stone-900 placeholder-stone-400 focus:bg-white focus:ring-2 focus:ring-[#b8860b]/20 focus:border-[#b8860b] focus:outline-none transition-all font-medium"
                       />
                     </div>
@@ -451,11 +519,15 @@ export const MemberAuthPortalGate: React.FC<MemberAuthPortalGateProps> = ({
                   <div>
                     <div className="flex items-center justify-between mb-1.5">
                       <label className="text-xs font-semibold text-stone-800">
-                        {language === 'ta' ? 'கடவுச்சொல் / OTP' : 'Password / OTP'}
+                        {language === 'ta' ? 'கடவுச்சொல் (Password)' : 'Password'}
                       </label>
-                      <span className="text-[11px] text-[#801524] font-semibold cursor-pointer hover:underline">
-                        {language === 'ta' ? 'OTP அனுப்புக' : 'Send OTP'}
-                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setIsForgotPasswordOpen(true)}
+                        className="text-[11px] text-[#801524] font-bold cursor-pointer hover:underline"
+                      >
+                        {language === 'ta' ? 'கடவுச்சொல்லை மறந்துவிட்டீர்களா?' : 'Forgot Password?'}
+                      </button>
                     </div>
                     <div className="relative">
                       <Lock className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400" />
@@ -580,12 +652,13 @@ export const MemberAuthPortalGate: React.FC<MemberAuthPortalGateProps> = ({
 
                         <div>
                           <label className="block text-xs font-semibold text-stone-700 mb-1">
-                            {language === 'ta' ? 'மின்னஞ்சல் (Email)' : 'Email Address'}
+                            {language === 'ta' ? 'மின்னஞ்சல் (Email) *' : 'Email Address *'}
                           </label>
                           <div className="relative">
                             <Mail className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
                             <input
                               type="email"
+                              required
                               value={regEmail}
                               onChange={(e) => setRegEmail(e.target.value)}
                               placeholder="name@gmail.com"
@@ -623,6 +696,100 @@ export const MemberAuthPortalGate: React.FC<MemberAuthPortalGateProps> = ({
                               <option value="female">{language === 'ta' ? 'பெண்' : 'Female'}</option>
                               <option value="other">{language === 'ta' ? 'மற்றவை' : 'Other'}</option>
                             </select>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Username Choice & Password for Next Login */}
+                      <div className="p-3.5 bg-amber-50/60 border border-amber-200/80 rounded-2xl space-y-3 mt-3">
+                        <div className="flex items-center gap-2">
+                          <Lock className="w-4 h-4 text-amber-700" />
+                          <h4 className="text-xs font-bold text-amber-950">
+                            {language === 'ta'
+                              ? 'அடுத்த உள்நுழைவுக்கான பயனர் பெயர் & கடவுச்சொல் (Firebase Auth Ready)'
+                              : 'Username & Password for Next Login (Firebase Auth Ready)'}
+                          </h4>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-semibold text-stone-700 mb-1">
+                            {language === 'ta'
+                              ? 'உள்நுழைவு பயனர் பெயராக எதைப் பயன்படுத்த விரும்புகிறீர்கள்?'
+                              : 'Select Username Identifier for Login:'}
+                          </label>
+                          <div className="grid grid-cols-2 gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setRegUsernameChoice('mobile')}
+                              className={`py-2 px-3 text-xs rounded-xl border font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                                regUsernameChoice === 'mobile'
+                                  ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
+                                  : 'bg-white text-stone-700 border-stone-300 hover:bg-stone-50'
+                              }`}
+                            >
+                              <Phone className="w-3.5 h-3.5" />
+                              <span>{language === 'ta' ? 'மொபைல் எண்' : 'Mobile Number'}</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => setRegUsernameChoice('email')}
+                              className={`py-2 px-3 text-xs rounded-xl border font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                                regUsernameChoice === 'email'
+                                  ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
+                                  : 'bg-white text-stone-700 border-stone-300 hover:bg-stone-50'
+                              }`}
+                            >
+                              <Mail className="w-3.5 h-3.5" />
+                              <span>{language === 'ta' ? 'மின்னஞ்சல் ID' : 'Email ID'}</span>
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-xs font-semibold text-stone-700 mb-1">
+                              {language === 'ta'
+                                ? 'கடவுச்சொல் அமைக்க (குறைந்தது 6) *'
+                                : 'Set Password (Min 6 chars) *'}
+                            </label>
+                            <div className="relative">
+                              <Lock className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
+                              <input
+                                type={showRegPassword ? 'text' : 'password'}
+                                required
+                                value={regPassword}
+                                onChange={(e) => setRegPassword(e.target.value)}
+                                placeholder="••••••"
+                                className="w-full pl-8 pr-8 py-2 text-xs rounded-xl border border-stone-300 bg-white text-stone-900 focus:ring-2 focus:ring-amber-500 font-medium"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => setShowRegPassword(!showRegPassword)}
+                                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600 cursor-pointer"
+                              >
+                                {showRegPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                              </button>
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="block text-xs font-semibold text-stone-700 mb-1">
+                              {language === 'ta'
+                                ? 'கடவுச்சொல்லை உறுதிசெய் *'
+                                : 'Confirm Password *'}
+                            </label>
+                            <div className="relative">
+                              <Lock className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
+                              <input
+                                type={showRegPassword ? 'text' : 'password'}
+                                required
+                                value={regConfirmPassword}
+                                onChange={(e) => setRegConfirmPassword(e.target.value)}
+                                placeholder="••••••"
+                                className="w-full pl-8 pr-3 py-2 text-xs rounded-xl border border-stone-300 bg-white text-stone-900 focus:ring-2 focus:ring-amber-500 font-medium"
+                              />
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -822,13 +989,13 @@ export const MemberAuthPortalGate: React.FC<MemberAuthPortalGateProps> = ({
 
                     <button
                       type="submit"
-                      className="w-full py-4 bg-[#801524] hover:bg-[#68101c] text-white font-bold rounded-2xl text-sm transition-all shadow-md hover:shadow-lg flex items-center justify-center gap-2 cursor-pointer mt-4"
+                      className="w-full py-4 bg-gradient-to-r from-[#801524] via-[#941c2c] to-[#600f1a] hover:opacity-95 text-white font-bold rounded-2xl text-sm transition-all shadow-md hover:shadow-lg flex items-center justify-center gap-2 cursor-pointer mt-4"
                     >
                       <UserCheck className="w-5 h-5" />
                       <span>
                         {language === 'ta'
-                          ? 'பதிவு செய்து முகவரி புத்தகத்தில் சேமித்து போர்ட்டலில் நுழைக'
-                          : 'Register & Save to Address Book'}
+                          ? 'விவரங்களைச் சரிபார்த்து பதிவு செய்ய'
+                          : 'Proceed to Review Details & Register'}
                       </span>
                     </button>
                   </form>
@@ -1125,6 +1292,32 @@ export const MemberAuthPortalGate: React.FC<MemberAuthPortalGateProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Review Details & Email Verification Modal */}
+      {isReviewModalOpen && reviewData && (
+        <RegistrationReviewModal
+          isOpen={isReviewModalOpen}
+          onClose={() => setIsReviewModalOpen(false)}
+          onEditDetails={() => setIsReviewModalOpen(false)}
+          language={language}
+          data={reviewData}
+          onConfirmSuccess={handleFinalConfirmRegistration}
+        />
+      )}
+
+      {/* Forgot Password Modal */}
+      {isForgotPasswordOpen && (
+        <ForgotPasswordModal
+          isOpen={isForgotPasswordOpen}
+          onClose={() => setIsForgotPasswordOpen(false)}
+          language={language}
+          initialIdentifier={loginPhone}
+          onSuccessLogin={(user) => {
+            setIsForgotPasswordOpen(false);
+            onLoginSuccess(user);
+          }}
+        />
+      )}
     </div>
   );
 };

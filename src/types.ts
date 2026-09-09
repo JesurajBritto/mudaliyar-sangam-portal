@@ -25,6 +25,8 @@ export interface AuthUser {
   fullNameTa?: string;
   phone: string;
   email?: string;
+  username?: string;
+  password?: string;
   membershipCode: string;
   role: UserRole;
   position?: string;

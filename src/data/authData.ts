@@ -509,6 +509,8 @@ export const registerNewMember = (formData: {
   fullNameTa?: string;
   phone: string;
   email?: string;
+  username?: string;
+  password?: string;
   district: string;
   city?: string;
   branch?: string;
@@ -531,6 +533,7 @@ export const registerNewMember = (formData: {
 
   const resolvedCity = formData.city?.trim() || formData.district || 'Chennai';
   const resolvedBranch = formData.branch?.trim() || `${formData.district || 'Tamil Nadu'} Central Branch`;
+  const resolvedUsername = formData.username?.trim() || formData.email?.trim() || formData.phone.trim();
 
   const newMember: AuthUser = {
     id: `user-reg-${Date.now()}`,
@@ -538,6 +541,8 @@ export const registerNewMember = (formData: {
     fullNameTa: formData.fullNameTa?.trim() || formData.fullName.trim(),
     phone: formData.phone.trim(),
     email: formData.email?.trim() || '',
+    username: resolvedUsername,
+    password: formData.password || '123456',
     membershipCode,
     role: 'member',
     branch: resolvedBranch,
@@ -586,4 +591,125 @@ export const registerNewMember = (formData: {
   });
 
   return newMember;
+};
+
+export const authenticateUser = (
+  identifier: string,
+  password?: string
+): { success: boolean; user?: AuthUser; error?: string } => {
+  const cleanId = identifier.trim();
+  if (!cleanId) {
+    return { success: false, error: 'Identifier (Mobile / Email / Username) is required' };
+  }
+
+  const allUsers = loadAllRegisteredUsers();
+  const found = allUsers.find((u) => {
+    const cleanIdDigits = cleanId.replace(/\D/g, '');
+    const userPhoneDigits = u.phone ? u.phone.replace(/\D/g, '') : '';
+    const pMatch = (cleanIdDigits.length >= 10 && userPhoneDigits === cleanIdDigits) || (u.phone && u.phone.trim() === cleanId);
+    const eMatch = u.email && u.email.trim().toLowerCase() === cleanId.toLowerCase();
+    const uMatch = u.username && u.username.trim().toLowerCase() === cleanId.toLowerCase();
+    const mMatch = u.membershipCode && u.membershipCode.trim().toLowerCase() === cleanId.toLowerCase();
+    return pMatch || eMatch || uMatch || mMatch;
+  });
+
+  if (!found) {
+    return { success: false, error: 'Account not found with this Mobile / Email / Username' };
+  }
+
+  // If user set a specific password, verify it (or allow demo password '123456' for ease)
+  if (found.password && password && password !== '123456' && found.password !== password) {
+    return { success: false, error: 'Invalid password. Please check and try again.' };
+  }
+
+  return { success: true, user: found };
+};
+
+export const requestPasswordReset = (
+  identifier: string
+): { success: boolean; user?: AuthUser; email?: string; resetToken?: string; error?: string } => {
+  const cleanId = identifier.trim();
+  if (!cleanId) {
+    return { success: false, error: 'Please enter registered Email ID or Mobile Number' };
+  }
+
+  const cleanDigits = cleanId.replace(/\D/g, '');
+  const allUsers = loadAllRegisteredUsers();
+  const found = allUsers.find((u) => {
+    const userPhoneDigits = u.phone ? u.phone.replace(/\D/g, '') : '';
+    const pMatch = (cleanDigits.length >= 10 && userPhoneDigits === cleanDigits) || (u.phone && u.phone.trim() === cleanId);
+    const eMatch = u.email && u.email.trim().toLowerCase() === cleanId.toLowerCase();
+    const uMatch = u.username && u.username.trim().toLowerCase() === cleanId.toLowerCase();
+    const mMatch = u.membershipCode && u.membershipCode.trim().toLowerCase() === cleanId.toLowerCase();
+    return pMatch || eMatch || uMatch || mMatch;
+  });
+
+  if (!found) {
+    return {
+      success: false,
+      error: 'No registered member account found with this Email ID or Mobile Number. Please check and try again.'
+    };
+  }
+
+  const targetEmail = found.email?.trim() || `${found.phone}@mudaliyarsangam.org`;
+  const resetToken = `rst-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+
+  return {
+    success: true,
+    user: found,
+    email: targetEmail,
+    resetToken
+  };
+};
+
+export const updatePasswordForUser = (
+  userIdOrPhone: string,
+  newPassword: string
+): { success: boolean; error?: string; user?: AuthUser } => {
+  if (!newPassword || newPassword.length < 6) {
+    return { success: false, error: 'Password must be at least 6 characters' };
+  }
+
+  const allUsers = loadAllRegisteredUsers();
+  const cleanDigits = userIdOrPhone.replace(/\D/g, '');
+  const index = allUsers.findIndex(
+    (u) =>
+      u.id === userIdOrPhone ||
+      u.membershipCode.toLowerCase() === userIdOrPhone.toLowerCase() ||
+      (cleanDigits.length >= 10 && u.phone && u.phone.replace(/\D/g, '') === cleanDigits) ||
+      (u.email && u.email.toLowerCase() === userIdOrPhone.toLowerCase())
+  );
+
+  if (index === -1) {
+    return { success: false, error: 'Member account not found' };
+  }
+
+  const updated: AuthUser = {
+    ...allUsers[index],
+    password: newPassword
+  };
+  allUsers[index] = updated;
+  saveAllRegisteredUsers(allUsers);
+
+  // If currently logged in user, keep synchronized
+  const current = loadCurrentUser();
+  if (current && (current.id === updated.id || current.membershipCode === updated.membershipCode)) {
+    saveCurrentUser(updated);
+  }
+
+  return { success: true, user: updated };
+};
+
+export const updateMemberProfile = (updatedUser: AuthUser): void => {
+  saveCurrentUser(updatedUser);
+  const allUsers = loadAllRegisteredUsers();
+  const index = allUsers.findIndex(
+    (u) => u.id === updatedUser.id || u.membershipCode === updatedUser.membershipCode
+  );
+  if (index >= 0) {
+    allUsers[index] = updatedUser;
+    saveAllRegisteredUsers(allUsers);
+  } else {
+    saveAllRegisteredUsers([updatedUser, ...allUsers]);
+  }
 };

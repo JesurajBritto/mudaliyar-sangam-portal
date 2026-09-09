@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { TabType, Language, AuthUser } from './types';
 import { Header } from './components/Header';
 import { MemberAuthPortalGate } from './components/MemberAuthPortalGate';
@@ -19,6 +20,7 @@ import { ArchitectureOverview } from './components/ArchitectureOverview';
 import { SuperAdminMemberManagement } from './components/SuperAdminMemberManagement';
 import { SuperAdminCmsModal } from './components/SuperAdminCmsModal';
 import { AuthModal } from './components/AuthModal';
+import { MemberProfileModal } from './components/MemberProfileModal';
 import { loadCurrentUser, saveCurrentUser } from './data/authData';
 import { CompletePortalData, loadPortalContent, savePortalContent, broadcastPortalContentUpdate } from './data/portalContentData';
 
@@ -31,6 +33,7 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(loadCurrentUser);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
   const [authModalInitialMode, setAuthModalInitialMode] = useState<'login' | 'register' | 'mobile'>('login');
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState<boolean>(false);
 
   // Global Portal Data & CMS State
   const [portalData, setPortalData] = useState<CompletePortalData>(loadPortalContent);
@@ -93,13 +96,22 @@ export default function App() {
         currentUser={currentUser}
         onOpenAuth={handleOpenAuth}
         onLogout={handleLogout}
+        onOpenProfile={() => setIsProfileModalOpen(true)}
         onOpenCms={handleOpenCms}
         portalData={portalData}
       />
 
       {/* Main Content Area */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        {!currentUser ? (
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.div
+            key={`platform-content-${language}`}
+            initial={{ opacity: 0.8 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0.8 }}
+            transition={{ duration: 0.18, ease: 'easeInOut' }}
+          >
+            {!currentUser ? (
           /* BEFORE LOGIN: Only Show Login & Registration Gateway with Official Headquarters Below */
           <MemberAuthPortalGate
             language={language}
@@ -116,6 +128,7 @@ export default function App() {
                 onNavigateTab={setActiveTab}
                 currentUser={currentUser}
                 onOpenAuth={handleOpenAuth}
+                onOpenProfile={() => setIsProfileModalOpen(true)}
                 portalData={portalData}
                 onSaveData={handleSavePortalData}
                 onOpenCms={handleOpenCms}
@@ -190,6 +203,7 @@ export default function App() {
               <DigitalMemberIdViewer
                 language={language}
                 onBackToHome={() => setActiveTab('home')}
+                currentUser={currentUser}
               />
             )}
 
@@ -214,6 +228,8 @@ export default function App() {
             )}
           </>
         )}
+          </motion.div>
+        </AnimatePresence>
       </main>
 
       {/* Global Auth Modal for Switch Role / Header Quick Triggers */}
@@ -266,15 +282,38 @@ export default function App() {
               </button>
               <button
                 type="button"
-                onClick={() => setActiveTab('digital-id')}
+                onClick={() => setIsProfileModalOpen(true)}
                 className="hover:text-[#801524] transition-colors font-medium text-stone-700 cursor-pointer"
               >
-                Digital ID & QR
+                {language === 'ta' ? 'ஸ்மார்ட் அடையாள அட்டை' : 'Smart ID Card'}
               </button>
             </div>
           )}
         </div>
       </footer>
+
+      {/* User Login & Registration Modal */}
+      <AuthModal
+        isOpen={isAuthModalOpen}
+        onClose={() => setIsAuthModalOpen(false)}
+        language={language}
+        onLoginSuccess={handleLoginSuccess}
+        initialMode={authModalInitialMode}
+      />
+
+      {/* Member Profile & Digital Smart ID Card Modal */}
+      {currentUser && (
+        <MemberProfileModal
+          isOpen={isProfileModalOpen}
+          onClose={() => setIsProfileModalOpen(false)}
+          currentUser={currentUser}
+          onUpdateUser={(updatedUser) => {
+            setCurrentUser(updatedUser);
+            saveCurrentUser(updatedUser);
+          }}
+          language={language}
+        />
+      )}
 
       {/* Super Admin Live CMS Modal (Globally Accessible) */}
       <SuperAdminCmsModal
