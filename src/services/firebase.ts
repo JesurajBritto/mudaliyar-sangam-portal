@@ -158,14 +158,15 @@ export async function revokeAdminEmail(email: string): Promise<void> {
 // Initialize Firebase SDK
 const app = initializeApp(firebaseConfig);
 
-// CRITICAL: Initialize Firestore with custom firestoreDatabaseId and enable long-polling
+// CRITICAL: Initialize Firestore with custom firestoreDatabaseId if provided, and enable long-polling
 // to prevent WebChannel connection drops behind reverse proxies and in sandboxed environments
+const firestoreDatabaseId = (firebaseConfig as Record<string, any>).firestoreDatabaseId;
 export const db = initializeFirestore(
   app,
   {
     experimentalForceLongPolling: true,
   },
-  firebaseConfig.firestoreDatabaseId
+  firestoreDatabaseId
 );
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
@@ -489,6 +490,11 @@ export async function logoutUser(): Promise<void> {
   await firebaseSignOut(auth);
 }
 
+// Subscribe to Firebase Authentication state changes
+export function onAuthChange(callback: (user: FirebaseUser | null) => void): () => void {
+  return onAuthStateChanged(auth, callback);
+}
+
 // Cloud Member Sync Functions
 export async function syncMemberToCloud(member: MemberAddressEntry): Promise<void> {
   const path = `members/${member.id}`;
@@ -501,6 +507,10 @@ export async function syncMemberToCloud(member: MemberAddressEntry): Promise<voi
 
 export async function fetchMembersFromCloud(): Promise<MemberAddressEntry[]> {
   const path = 'members';
+  // Only query if auth is ready and user is authenticated
+  if (!auth.currentUser) {
+    return [];
+  }
   try {
     const snap = await getDocs(collection(db, path));
     const members: MemberAddressEntry[] = [];
@@ -518,6 +528,10 @@ export async function fetchMembersFromCloud(): Promise<MemberAddressEntry[]> {
 export function subscribeMembersFromCloud(
   onUpdate: (members: MemberAddressEntry[]) => void
 ): () => void {
+  // CRITICAL: Only attach onSnapshot listeners if auth is ready and user is authenticated
+  if (!auth.currentUser) {
+    return () => {};
+  }
   const path = 'members';
   const unsubscribe = onSnapshot(
     collection(db, path),

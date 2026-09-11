@@ -23,7 +23,7 @@ import { AuthModal } from './components/AuthModal';
 import { MemberProfileModal } from './components/MemberProfileModal';
 import { loadCurrentUser, saveCurrentUser } from './data/authData';
 import { CompletePortalData, loadPortalContent, savePortalContent, broadcastPortalContentUpdate } from './data/portalContentData';
-import { testConnection, subscribeMembersFromCloud } from './services/firebase';
+import { testConnection, subscribeMembersFromCloud, onAuthChange, syncUserAfterAuth } from './services/firebase';
 import { loadAddressBook, saveAddressBook } from './data/addressBookData';
 
 export default function App() {
@@ -63,19 +63,45 @@ export default function App() {
       console.warn('Firebase test connection status:', err);
     });
 
-    // Real-time synchronization of members from Cloud Firestore
-    const unsubscribe = subscribeMembersFromCloud((cloudMembers) => {
-      if (cloudMembers && cloudMembers.length > 0) {
-        const local = loadAddressBook();
-        const map = new Map();
-        local.forEach((m) => map.set(m.id, m));
-        cloudMembers.forEach((m) => map.set(m.id, m));
-        saveAddressBook(Array.from(map.values()));
+    let unsubscribeMembers: (() => void) | null = null;
+
+    // React Firebase Setup: Listen to auth state and only attach listeners when authenticated
+    const unsubscribeAuth = onAuthChange(async (fbUser) => {
+      if (fbUser) {
+        try {
+          const authRes = await syncUserAfterAuth(fbUser);
+          setCurrentUser(authRes.user);
+          saveCurrentUser(authRes.user);
+        } catch (e) {
+          console.warn('Auth sync status:', e);
+        }
+
+        // Data Fetching: Only attach onSnapshot listeners if auth is ready and user is authenticated
+        if (unsubscribeMembers) {
+          unsubscribeMembers();
+        }
+        unsubscribeMembers = subscribeMembersFromCloud((cloudMembers) => {
+          if (cloudMembers && cloudMembers.length > 0) {
+            const local = loadAddressBook();
+            const map = new Map();
+            local.forEach((m) => map.set(m.id, m));
+            cloudMembers.forEach((m) => map.set(m.id, m));
+            saveAddressBook(Array.from(map.values()));
+          }
+        });
+      } else {
+        if (unsubscribeMembers) {
+          unsubscribeMembers();
+          unsubscribeMembers = null;
+        }
       }
     });
 
     return () => {
-      unsubscribe();
+      if (unsubscribeMembers) {
+        unsubscribeMembers();
+      }
+      unsubscribeAuth();
     };
   }, []);
 
