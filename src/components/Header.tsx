@@ -167,9 +167,11 @@ export const Header: React.FC<HeaderProps> = ({
 
   // Auto-align when active tab changes externally or on mount
   React.useEffect(() => {
-    scrollToTab(activeTab);
-    prevActiveTabRef.current = activeTab;
-  }, [activeTab, scrollToTab]);
+    if (currentUser) {
+      scrollToTab(activeTab);
+      prevActiveTabRef.current = activeTab;
+    }
+  }, [activeTab, scrollToTab, currentUser]);
 
   const handleTabClick = (tabId: TabType) => {
     if (hasDraggedRef.current) {
@@ -507,47 +509,49 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         </div>
 
-        {/* Navigation Tabs - smoothly glides to the left/center on click so all subsequent tabs are exposed */}
-        <div className="relative mt-2.5 pt-2 border-t border-[#f0ece1]">
-          <nav
-            ref={navContainerRef}
-            onMouseDown={handleMouseDown}
-            onMouseMove={handleMouseMove}
-            onMouseUp={handleMouseUpOrLeave}
-            onMouseLeave={handleMouseUpOrLeave}
-            onWheel={handleWheel}
-            className="flex items-center space-x-1.5 overflow-x-auto pb-1.5 scrollbar-none w-full scroll-smooth select-none cursor-grab active:cursor-grabbing px-2 sm:px-3"
-          >
-            {navTabs.map((tab) => (
-              <button
-                key={tab.id}
-                id={`nav-tab-${tab.id}`}
-                type="button"
-                onClick={() => handleTabClick(tab.id)}
-                className={`flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium rounded-xl whitespace-nowrap transition-all cursor-pointer shrink-0 ${
-                  activeTab === tab.id
-                    ? 'bg-[#801524] text-white font-semibold shadow-xs ring-1 ring-[#801524]'
-                    : 'text-stone-600 hover:bg-[#f5f2eb] hover:text-stone-900 border border-transparent hover:border-[#e8e3d8]'
-                }`}
-              >
-                {tab.icon}
-                <AnimatePresence mode="wait" initial={false}>
-                  <motion.span
-                    key={`nav-label-${tab.id}-${language}`}
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ duration: 0.15, ease: 'easeOut' }}
-                  >
-                    {language === 'en' ? tab.labelEn : tab.labelTa}
-                  </motion.span>
-                </AnimatePresence>
-              </button>
-            ))}
-            {/* Trailing breathing room cushion for comfortable Right-Center positioning */}
-            <div className="w-16 sm:w-28 shrink-0 pointer-events-none" aria-hidden="true" />
-          </nav>
-        </div>
+        {/* Navigation Tabs - Only shown after members log in */}
+        {currentUser && (
+          <div className="relative mt-2.5 pt-2 border-t border-[#f0ece1]">
+            <nav
+              ref={navContainerRef}
+              onMouseDown={handleMouseDown}
+              onMouseMove={handleMouseMove}
+              onMouseUp={handleMouseUpOrLeave}
+              onMouseLeave={handleMouseUpOrLeave}
+              onWheel={handleWheel}
+              className="flex items-center space-x-1.5 overflow-x-auto pb-1.5 scrollbar-none w-full scroll-smooth select-none cursor-grab active:cursor-grabbing px-2 sm:px-3"
+            >
+              {navTabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  id={`nav-tab-${tab.id}`}
+                  type="button"
+                  onClick={() => handleTabClick(tab.id)}
+                  className={`flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium rounded-xl whitespace-nowrap transition-all cursor-pointer shrink-0 ${
+                    activeTab === tab.id
+                      ? 'bg-[#801524] text-white font-semibold shadow-xs ring-1 ring-[#801524]'
+                      : 'text-stone-600 hover:bg-[#f5f2eb] hover:text-stone-900 border border-transparent hover:border-[#e8e3d8]'
+                  }`}
+                >
+                  {tab.icon}
+                  <AnimatePresence mode="wait" initial={false}>
+                    <motion.span
+                      key={`nav-label-${tab.id}-${language}`}
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      transition={{ duration: 0.15, ease: 'easeOut' }}
+                    >
+                      {language === 'en' ? tab.labelEn : tab.labelTa}
+                    </motion.span>
+                  </AnimatePresence>
+                </button>
+              ))}
+              {/* Trailing breathing room cushion for comfortable Right-Center positioning */}
+              <div className="w-16 sm:w-28 shrink-0 pointer-events-none" aria-hidden="true" />
+            </nav>
+          </div>
+        )}
       </div>
     </header>
   );
