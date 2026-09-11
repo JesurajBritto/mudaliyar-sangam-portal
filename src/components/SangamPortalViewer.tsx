@@ -51,7 +51,7 @@ interface SangamPortalViewerProps {
   language: Language;
   onNavigateTab: (tab: TabType) => void;
   currentUser?: AuthUser | null;
-  onOpenAuth?: (mode?: 'login' | 'register' | 'mobile') => void;
+  onOpenAuth?: (mode?: 'login' | 'register') => void;
   onOpenProfile?: () => void;
   portalData?: CompletePortalData;
   onSaveData?: (data: CompletePortalData) => void;
@@ -301,16 +301,6 @@ export const SangamPortalViewer: React.FC<SangamPortalViewerProps> = ({
             >
               <KeyRound className="w-4 h-4 text-[#b8860b]" />
               <span>{language === 'ta' ? 'உள்நுழைவு (Sign In)' : 'Sign In'}</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => onOpenAuth?.('mobile')}
-              className="p-2.5 rounded-xl bg-[#faf8f5] hover:bg-[#f0ece1] text-stone-800 font-bold text-xs border border-[#e8e3d8] flex items-center justify-center gap-1.5 transition-all cursor-pointer"
-              title="Open on Mobile / QR"
-            >
-              <Smartphone className="w-4 h-4 text-[#801524]" />
-              <span className="hidden sm:inline">{language === 'ta' ? 'மொபைலில்' : 'Mobile'}</span>
             </button>
           </div>
         </div>

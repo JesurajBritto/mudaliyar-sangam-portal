@@ -1,12 +1,6 @@
 import React from 'react';
 import {
   Landmark,
-  ShieldCheck,
-  Database,
-  FileCode2,
-  Users2,
-  Search,
-  Layers,
   BookUser,
   Megaphone,
   HeartHandshake,
@@ -38,10 +32,10 @@ interface HeaderProps {
   setActiveTab: (tab: TabType) => void;
   language: Language;
   setLanguage: (lang: Language) => void;
-  searchQuery: string;
-  setSearchQuery: (query: string) => void;
+  searchQuery?: string;
+  setSearchQuery?: (query: string) => void;
   currentUser: AuthUser | null;
-  onOpenAuth: (mode?: 'login' | 'register' | 'mobile') => void;
+  onOpenAuth?: (mode?: 'login' | 'register') => void;
   onLogout: () => void;
   onOpenProfile?: () => void;
   onOpenCms?: (tab?: string) => void;
@@ -53,8 +47,6 @@ export const Header: React.FC<HeaderProps> = ({
   setActiveTab,
   language,
   setLanguage,
-  searchQuery,
-  setSearchQuery,
   currentUser,
   onOpenAuth,
   onLogout,
@@ -66,7 +58,7 @@ export const Header: React.FC<HeaderProps> = ({
   const branding = propPortalData?.branding || loadPortalContent().branding;
 
   const navTabs: { id: TabType; labelEn: string; labelTa: string; icon: React.ReactNode }[] = [
-    { id: 'home', labelEn: 'Official Homepage', labelTa: 'அதிகாரப்பூர்வ முகப்பு', icon: <Landmark className="w-4 h-4 text-[#801524]" /> },
+    { id: 'home', labelEn: 'Home', labelTa: 'முகப்பு', icon: <Landmark className="w-4 h-4 text-[#801524]" /> },
     ...(isSuperAdmin
       ? [
           {
@@ -77,18 +69,13 @@ export const Header: React.FC<HeaderProps> = ({
           }
         ]
       : []),
-    { id: 'address-book', labelEn: 'Address Book & Privacy', labelTa: 'முகவரி புத்தகம் & தனியுரிமை', icon: <BookUser className="w-4 h-4 text-stone-600" /> },
-    { id: 'association-members', labelEn: 'Sangam Officers Year-wise', labelTa: 'சங்க நிர்வாகிகள் ஆண்டு வாரியாக', icon: <Award className="w-4 h-4 text-stone-600" /> },
+    { id: 'address-book', labelEn: 'Address Book', labelTa: 'முகவரி புத்தகம்', icon: <BookUser className="w-4 h-4 text-stone-600" /> },
+    { id: 'association-members', labelEn: 'Officers', labelTa: 'நிர்வாகிகள்', icon: <Award className="w-4 h-4 text-stone-600" /> },
     { id: 'business-ads', labelEn: 'Business Ads & Feed', labelTa: 'வணிக விளம்பரம் & ஊட்டம்', icon: <Megaphone className="w-4 h-4 text-stone-600" /> },
     { id: 'donations', labelEn: 'Donations & Accounts', labelTa: 'நன்கொடை & வரவு செலவு கணக்குகள்', icon: <HeartHandshake className="w-4 h-4 text-stone-600" /> },
     { id: 'matrimonial', labelEn: 'Matrimonial Matchmaking Hub', labelTa: 'திருமண தகவல் மையம்', icon: <Heart className="w-4 h-4 text-rose-600" /> },
     { id: 'youth-career', labelEn: 'Youth Career & Scholarships', labelTa: 'இளைஞர் வழிகாட்டல் & கல்வி உதவி', icon: <GraduationCap className="w-4 h-4 text-sky-600" /> },
-    { id: 'family-tree', labelEn: 'Family Genealogical Tree', labelTa: 'குடும்ப வம்சாவளி மரம்', icon: <GitBranch className="w-4 h-4 text-emerald-600" /> },
-    { id: 'checklist', labelEn: 'Pre-Check List', labelTa: 'முன் தயாரிப்பு பட்டியல்', icon: <ShieldCheck className="w-4 h-4 text-stone-600" /> },
-    { id: 'schema', labelEn: 'Database Schema', labelTa: 'தரவுத்தள வடிவமைப்பு', icon: <Database className="w-4 h-4 text-stone-600" /> },
-    { id: 'api', labelEn: 'API Documentation', labelTa: 'API ஆவணங்கள்', icon: <FileCode2 className="w-4 h-4 text-stone-600" /> },
-    { id: 'rbac', labelEn: 'RBAC & Privacy Matrix', labelTa: 'பாதுகாப்பு & அணுகல் உரிமை', icon: <Users2 className="w-4 h-4 text-stone-600" /> },
-    { id: 'architecture', labelEn: 'Cloud Architecture', labelTa: 'கிளவுட் கட்டமைப்பு', icon: <Layers className="w-4 h-4 text-stone-600" /> },
+    { id: 'family-tree', labelEn: 'Family Tree', labelTa: 'குடும்ப மரம்', icon: <GitBranch className="w-4 h-4 text-emerald-600" /> },
   ];
 
   const getRoleBadge = (role: string) => {
@@ -112,13 +99,140 @@ export const Header: React.FC<HeaderProps> = ({
     }
   };
 
+  const navContainerRef = React.useRef<HTMLDivElement>(null);
+  const isDraggingRef = React.useRef(false);
+  const startXRef = React.useRef(0);
+  const scrollLeftRef = React.useRef(0);
+  const hasDraggedRef = React.useRef(false);
+  const prevActiveTabRef = React.useRef<TabType>(activeTab);
+
+  // Smoothly glides the clicked tab into position with comfortable breathing room:
+  // - Right-Center with comfortable breathing room (~68% anchor, leaving generous cushion on the right so tabs never slam into the border)
+  // - Left-Center (~28% anchor, leaving room on the left and exposing upcoming tabs on the right)
+  const scrollToTab = React.useCallback(
+    (tabId: TabType, forceMode?: 'left-center' | 'right-center') => {
+      const container = navContainerRef.current;
+      const tabEl = document.getElementById(`nav-tab-${tabId}`);
+      if (!container || !tabEl) return;
+
+      if (tabId === 'home' || tabEl.offsetLeft < 60) {
+        container.scrollTo({ left: 0, behavior: 'smooth' });
+        return;
+      }
+
+      const containerWidth = container.clientWidth;
+      const tabLeft = tabEl.offsetLeft;
+      const tabWidth = tabEl.offsetWidth;
+      const tabCenter = tabLeft + tabWidth / 2;
+
+      // Position of tab relative to current scroll viewport
+      const currentScroll = container.scrollLeft;
+      const tabRelativeX = tabCenter - currentScroll;
+      const relativeRatio = tabRelativeX / containerWidth;
+
+      const tabIndex = navTabs.findIndex((t) => t.id === tabId);
+      const prevIndex = navTabs.findIndex((t) => t.id === prevActiveTabRef.current);
+      const isMovingBackward = prevIndex > tabIndex;
+      const isTrailingTab = tabIndex >= navTabs.length - 2;
+
+      let targetScroll: number;
+
+      // Determine whether Right-Center or Left-Center provides the most comfortable breathing room
+      if (
+        forceMode === 'right-center' ||
+        isTrailingTab ||
+        (forceMode !== 'left-center' && (isMovingBackward || relativeRatio < 0.44))
+      ) {
+        // Right-Center with comfortable breathing room:
+        // Positions the tab at ~66%-68% of the visible toolbar, preserving a comfortable ~32% breathing cushion on the right
+        const rightCenterAnchor = containerWidth * 0.67;
+        targetScroll = tabCenter - rightCenterAnchor;
+      } else if (forceMode === 'left-center' || relativeRatio > 0.56) {
+        // Left-Center:
+        // Positions the tab at ~28% of the visible toolbar, exposing subsequent items to the right
+        const leftCenterAnchor = containerWidth * 0.28;
+        targetScroll = tabCenter - leftCenterAnchor;
+      } else {
+        // Balanced center with comfortable room on both sides
+        targetScroll = tabCenter - containerWidth / 2;
+      }
+
+      const maxScroll = Math.max(0, container.scrollWidth - containerWidth);
+      const safeScroll = Math.max(0, Math.min(maxScroll, targetScroll));
+
+      container.scrollTo({ left: safeScroll, behavior: 'smooth' });
+    },
+    [navTabs]
+  );
+
+  // Auto-align when active tab changes externally or on mount
+  React.useEffect(() => {
+    scrollToTab(activeTab);
+    prevActiveTabRef.current = activeTab;
+  }, [activeTab, scrollToTab]);
+
   const handleTabClick = (tabId: TabType) => {
+    if (hasDraggedRef.current) {
+      hasDraggedRef.current = false;
+      return;
+    }
+
+    scrollToTab(tabId);
+
     if (!currentUser) {
-      onOpenAuth('login');
+      if (tabId === 'home') {
+        setActiveTab('home');
+        return;
+      }
+      onOpenAuth?.('login');
       return;
     }
     setActiveTab(tabId);
   };
+
+  // Drag-to-scroll for desktop users
+  const handleMouseDown = (e: React.MouseEvent) => {
+    const el = navContainerRef.current;
+    if (!el) return;
+    isDraggingRef.current = true;
+    hasDraggedRef.current = false;
+    startXRef.current = e.pageX - el.offsetLeft;
+    scrollLeftRef.current = el.scrollLeft;
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isDraggingRef.current) return;
+    const el = navContainerRef.current;
+    if (!el) return;
+    e.preventDefault();
+    const x = e.pageX - el.offsetLeft;
+    const walk = (x - startXRef.current) * 1.5;
+    if (Math.abs(walk) > 4) {
+      hasDraggedRef.current = true;
+    }
+    el.scrollLeft = scrollLeftRef.current - walk;
+  };
+
+  const handleMouseUpOrLeave = () => {
+    isDraggingRef.current = false;
+  };
+
+  // Convert vertical mouse wheel into horizontal scroll inside toolbar
+  const handleWheel = (e: React.WheelEvent) => {
+    const el = navContainerRef.current;
+    if (!el) return;
+    if (Math.abs(e.deltaY) > 0) {
+      el.scrollLeft += e.deltaY;
+    }
+  };
+
+  // Automatically slide to active tab when it changes
+  React.useEffect(() => {
+    const timer = setTimeout(() => {
+      scrollToTab(activeTab);
+    }, 100);
+    return () => clearTimeout(timer);
+  }, [activeTab, scrollToTab]);
 
   return (
     <header className="sticky top-0 z-40 w-full bg-white/95 backdrop-blur-md border-b border-[#e8e3d8] shadow-[0_2px_8px_rgba(0,0,0,0.03)]">
@@ -183,17 +297,9 @@ export const Header: React.FC<HeaderProps> = ({
               </div>
             </div>
 
-            {/* Mobile View Fast Auth Trigger */}
-            <div className="lg:hidden flex items-center gap-1.5">
-              <button
-                type="button"
-                onClick={() => onOpenAuth('mobile')}
-                className="p-2 rounded-xl border border-[#e8e3d8] bg-[#faf8f5] text-stone-700 hover:bg-[#f5f2eb]"
-                title="Mobile QR"
-              >
-                <Smartphone className="w-4 h-4" />
-              </button>
-              {currentUser ? (
+            {/* Mobile View Fast Auth Trigger - When logged in */}
+            {currentUser && (
+              <div className="lg:hidden flex items-center gap-1.5">
                 <div className="flex items-center gap-1">
                   <button
                     type="button"
@@ -216,33 +322,14 @@ export const Header: React.FC<HeaderProps> = ({
                   </button>
                   <button
                     type="button"
-                    onClick={() => onOpenAuth('login')}
+                    onClick={() => onOpenAuth?.('login')}
                     className="px-2 py-1.5 text-xs rounded-xl font-bold bg-[#801524] text-white truncate max-w-[80px] shadow-2xs"
                   >
                     {currentUser.role === 'super_admin' ? '👑 Admin' : '👤'}
                   </button>
                 </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => onOpenAuth('login')}
-                  className="px-3 py-1.5 text-xs font-bold bg-[#801524] text-white flex items-center gap-1 shadow-xs"
-                >
-                  <KeyRound className="w-3.5 h-3.5" />
-                  <AnimatePresence mode="wait" initial={false}>
-                    <motion.span
-                      key={`mob-login-btn-${language}`}
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      transition={{ duration: 0.15 }}
-                    >
-                      {language === 'ta' ? 'உள்நுழைக' : 'Login'}
-                    </motion.span>
-                  </AnimatePresence>
-                </button>
-              )}
-            </div>
+              </div>
+            )}
           </div>
 
           {/* Controls: Search, Super Admin Logo CMS Trigger, Language & User Profile */}
@@ -269,44 +356,6 @@ export const Header: React.FC<HeaderProps> = ({
                 </AnimatePresence>
               </button>
             )}
-
-            {/* Search Input (Active when logged in) */}
-            {currentUser && (
-              <div className="relative flex-1 sm:w-52">
-                <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
-                <input
-                  id="header-search-input"
-                  type="text"
-                  placeholder={language === 'en' ? 'Search directory...' : 'தேடுக...'}
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-8 pr-3 py-1.5 text-xs rounded-xl border border-[#e8e3d8] bg-[#faf8f5] text-stone-900 placeholder-stone-400 focus:outline-none focus:ring-1.5 focus:ring-[#b8860b] focus:bg-white transition-all"
-                />
-              </div>
-            )}
-
-            {/* Mobile Connect Button */}
-            <button
-              id="header-mobile-qr-btn"
-              type="button"
-              onClick={() => onOpenAuth('mobile')}
-              className="px-2.5 py-1.5 rounded-xl border border-[#e8e3d8] bg-[#faf8f5] text-stone-700 hover:bg-[#f2ede4] hover:text-stone-900 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
-              title="Open on Mobile / QR Code"
-            >
-              <Smartphone className="w-3.5 h-3.5 text-stone-600" />
-              <AnimatePresence mode="wait" initial={false}>
-                <motion.span
-                  key={`mobile-label-${language}`}
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.15 }}
-                  className="hidden sm:inline"
-                >
-                  {language === 'ta' ? 'மொபைல்' : 'Mobile Access'}
-                </motion.span>
-              </AnimatePresence>
-            </button>
 
             {/* Language Switcher with Subtle Animated Indicator */}
             <div
@@ -454,64 +503,31 @@ export const Header: React.FC<HeaderProps> = ({
                   <LogOut className="w-4 h-4" />
                 </button>
               </div>
-            ) : (
-              <div className="flex items-center gap-2 pl-1 border-l border-[#e8e3d8]">
-                <button
-                  id="header-login-btn"
-                  type="button"
-                  onClick={() => onOpenAuth('login')}
-                  className="px-3.5 py-1.5 text-xs font-bold rounded-xl border border-[#e0d9cb] bg-white text-stone-800 hover:bg-[#faf8f5] hover:border-[#c5bb9f] transition-all cursor-pointer flex items-center gap-1.5 shadow-2xs"
-                >
-                  <KeyRound className="w-3.5 h-3.5 text-stone-500" />
-                  <AnimatePresence mode="wait" initial={false}>
-                    <motion.span
-                      key={`login-btn-txt-${language}`}
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      transition={{ duration: 0.15 }}
-                    >
-                      {language === 'ta' ? 'உள்நுழைவு' : 'Sign In'}
-                    </motion.span>
-                  </AnimatePresence>
-                </button>
-                <button
-                  id="header-register-btn"
-                  type="button"
-                  onClick={() => onOpenAuth('register')}
-                  className="px-4 py-1.5 text-xs font-bold rounded-xl bg-[#801524] hover:bg-[#68101c] text-white shadow-2xs transition-all cursor-pointer flex items-center gap-1.5"
-                >
-                  <UserCheck className="w-3.5 h-3.5" />
-                  <AnimatePresence mode="wait" initial={false}>
-                    <motion.span
-                      key={`register-btn-txt-${language}`}
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      transition={{ duration: 0.15 }}
-                    >
-                      {language === 'ta' ? 'புதிய பதிவு' : 'Register'}
-                    </motion.span>
-                  </AnimatePresence>
-                </button>
-              </div>
-            )}
+            ) : null}
           </div>
         </div>
 
-        {/* Navigation Tabs */}
-        {currentUser ? (
-          <nav className="flex space-x-1.5 mt-3 overflow-x-auto pb-1 scrollbar-none border-t border-[#f0ece1] pt-2">
+        {/* Navigation Tabs - smoothly glides to the left/center on click so all subsequent tabs are exposed */}
+        <div className="relative mt-2.5 pt-2 border-t border-[#f0ece1]">
+          <nav
+            ref={navContainerRef}
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUpOrLeave}
+            onMouseLeave={handleMouseUpOrLeave}
+            onWheel={handleWheel}
+            className="flex items-center space-x-1.5 overflow-x-auto pb-1.5 scrollbar-none w-full scroll-smooth select-none cursor-grab active:cursor-grabbing px-2 sm:px-3"
+          >
             {navTabs.map((tab) => (
               <button
                 key={tab.id}
                 id={`nav-tab-${tab.id}`}
                 type="button"
                 onClick={() => handleTabClick(tab.id)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-xl whitespace-nowrap transition-all cursor-pointer ${
+                className={`flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium rounded-xl whitespace-nowrap transition-all cursor-pointer shrink-0 ${
                   activeTab === tab.id
-                    ? 'bg-[#801524] text-white font-semibold shadow-2xs'
-                    : 'text-stone-600 hover:bg-[#f5f2eb] hover:text-stone-900'
+                    ? 'bg-[#801524] text-white font-semibold shadow-xs ring-1 ring-[#801524]'
+                    : 'text-stone-600 hover:bg-[#f5f2eb] hover:text-stone-900 border border-transparent hover:border-[#e8e3d8]'
                 }`}
               >
                 {tab.icon}
@@ -528,45 +544,10 @@ export const Header: React.FC<HeaderProps> = ({
                 </AnimatePresence>
               </button>
             ))}
+            {/* Trailing breathing room cushion for comfortable Right-Center positioning */}
+            <div className="w-16 sm:w-28 shrink-0 pointer-events-none" aria-hidden="true" />
           </nav>
-        ) : (
-          <div className="mt-2.5 flex items-center justify-between py-2 px-3.5 rounded-xl bg-[#faf8f5] border border-[#e8e3d8] text-xs text-stone-700">
-            <AnimatePresence mode="wait" initial={false}>
-              <motion.span
-                key={`banner-lock-text-${language}`}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.18 }}
-                className="flex items-center gap-2 font-medium"
-              >
-                <Lock className="w-3.5 h-3.5 text-[#b8860b] shrink-0" />
-                <span>
-                  {language === 'ta'
-                    ? 'உறுப்பினர்கள் உள்நுழைந்த பிறகு முகவரி புத்தகம், திருமண மையம் மற்றும் அனைத்து விவரங்களும் தோன்றும்.'
-                    : 'Please sign in or register below to unlock full address book, matrimonial hub, and records.'}
-                </span>
-              </motion.span>
-            </AnimatePresence>
-            <button
-              type="button"
-              onClick={() => onOpenAuth('register')}
-              className="text-[#801524] font-bold hover:underline ml-2 whitespace-nowrap cursor-pointer"
-            >
-              <AnimatePresence mode="wait" initial={false}>
-                <motion.span
-                  key={`banner-reg-link-${language}`}
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.15 }}
-                >
-                  {language === 'ta' ? 'பதிவு செய்க →' : 'Register Now →'}
-                </motion.span>
-              </AnimatePresence>
-            </button>
-          </div>
-        )}
+        </div>
       </div>
     </header>
   );

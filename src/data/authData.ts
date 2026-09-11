@@ -505,6 +505,7 @@ export const saveCurrentUser = (user: AuthUser | null) => {
 };
 
 export const registerNewMember = (formData: {
+  id?: string;
   fullName: string;
   fullNameTa?: string;
   phone: string;
@@ -526,6 +527,7 @@ export const registerNewMember = (formData: {
   kulamGotram?: string;
   occupation?: string;
   bloodGroup?: string;
+  isRegistrationComplete?: boolean;
 }): AuthUser => {
   const currentMembers = loadAllRegisteredUsers();
   const randomSuffix = Math.floor(1000 + Math.random() * 9000);
@@ -536,7 +538,7 @@ export const registerNewMember = (formData: {
   const resolvedUsername = formData.username?.trim() || formData.email?.trim() || formData.phone.trim();
 
   const newMember: AuthUser = {
-    id: `user-reg-${Date.now()}`,
+    id: formData.id?.trim() || `user-reg-${Date.now()}`,
     fullName: formData.fullName.trim(),
     fullNameTa: formData.fullNameTa?.trim() || formData.fullName.trim(),
     phone: formData.phone.trim(),
@@ -560,7 +562,8 @@ export const registerNewMember = (formData: {
     occupation: formData.occupation?.trim() || 'Community Member',
     bloodGroup: formData.bloodGroup || 'O+',
     joinedDate: new Date().toISOString().split('T')[0],
-    isVerified: true
+    isVerified: true,
+    isRegistrationComplete: formData.isRegistrationComplete !== false
   };
 
   const updatedList = [newMember, ...currentMembers];

@@ -48,6 +48,7 @@ export interface AuthUser {
   bloodGroup?: string;
   joinedDate?: string;
   isVerified?: boolean;
+  isRegistrationComplete?: boolean;
 }
 
 export type AddressPrivacyLevel = 'public_to_members' | 'request_only';

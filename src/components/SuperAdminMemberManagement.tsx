@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Users,
   ShieldCheck,
@@ -37,6 +37,13 @@ import {
   STANDARD_POSITIONS
 } from '../data/authData';
 import { TN_DISTRICTS } from '../data/districts';
+import { AdminEmailAccessManager } from './AdminEmailAccessManager';
+import {
+  grantAdminEmail,
+  updateUserRoleInFirestore,
+  fetchUsersFromFirestore,
+  saveUserToFirestore
+} from '../services/firebase';
 
 interface SuperAdminMemberManagementProps {
   language: Language;
@@ -87,11 +94,32 @@ export const SuperAdminMemberManagement: React.FC<SuperAdminMemberManagementProp
 
   const demographics = useMemo(() => calculateDemographics(users), [users]);
 
-  // Refresh user list from storage
-  const reloadUsers = () => {
+  // Refresh user list from storage and Firestore
+  const reloadUsers = async () => {
     const loaded = loadAllRegisteredUsers();
+    try {
+      const cloudUsers = await fetchUsersFromFirestore();
+      if (cloudUsers.length > 0) {
+        const mergedMap = new Map<string, AuthUser>();
+        loaded.forEach((u) => mergedMap.set(u.id, u));
+        cloudUsers.forEach((u) => {
+          const existing = mergedMap.get(u.id);
+          mergedMap.set(u.id, existing ? { ...existing, ...u } : u);
+        });
+        const merged = Array.from(mergedMap.values());
+        saveAllRegisteredUsers(merged);
+        setUsers(merged);
+        return;
+      }
+    } catch (e) {
+      console.warn('Could not sync users from Firestore:', e);
+    }
     setUsers(loaded);
   };
+
+  useEffect(() => {
+    reloadUsers();
+  }, []);
 
   // Filtered member list for management table
   const filteredUsers = useMemo(() => {
@@ -137,6 +165,27 @@ export const SuperAdminMemberManagement: React.FC<SuperAdminMemberManagementProp
       editPositionTa,
       editBranch
     );
+
+    // Sync update directly to Firestore database
+    updateUserRoleInFirestore(
+      editingUser.id,
+      editRole,
+      editPosition,
+      editPositionTa,
+      editingUser.email
+    ).catch((e) => console.warn('Could not sync role change to Firestore:', e));
+
+    // If user has an email and was granted admin role, ensure they are in admin_emails
+    if (editingUser.email && (editRole === 'super_admin' || editRole === 'branch_admin')) {
+      grantAdminEmail({
+        email: editingUser.email,
+        role: editRole,
+        position: editPosition,
+        positionTa: editPositionTa,
+        grantedBy: currentUser?.email || 'Super Admin',
+        grantedAt: new Date().toISOString()
+      }).catch((e) => console.warn('Could not sync admin email on user role edit:', e));
+    }
 
     setUsers(updatedList);
     setSaveSuccessMsg(
@@ -185,6 +234,7 @@ export const SuperAdminMemberManagement: React.FC<SuperAdminMemberManagementProp
     }
 
     const created = addNewUserByAdmin(newMemberForm);
+    saveUserToFirestore(created).catch((e) => console.warn('Could not sync created member to Firestore:', e));
     setUsers(loadAllRegisteredUsers());
     setIsAddModalOpen(false);
     setNewMemberForm({
@@ -580,6 +630,16 @@ export const SuperAdminMemberManagement: React.FC<SuperAdminMemberManagementProp
           </div>
         )}
       </div>
+
+      {/* 2.5 AUTHORIZED ADMIN & SUPER ADMIN EMAIL ACCESS CONTROL */}
+      <AdminEmailAccessManager
+        language={language}
+        currentAdminEmail={currentUser?.email}
+        onAdminListChanged={() => {
+          reloadUsers();
+          onUserUpdated?.();
+        }}
+      />
 
       {/* 3. REGISTERED MEMBER MANAGEMENT TABLE & ACTIONS */}
       <div className="p-5 rounded-3xl bg-white dark:bg-zinc-900 border border-stone-200 dark:border-zinc-800 shadow-sm space-y-4">

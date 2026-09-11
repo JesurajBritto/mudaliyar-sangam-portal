@@ -35,8 +35,9 @@ import {
   GraduationCap
 } from 'lucide-react';
 import { AuthUser, Language, AddressPrivacyLevel } from '../types';
-import { DEMO_ACCOUNTS, registerNewMember, saveCurrentUser, authenticateUser } from '../data/authData';
+import { registerNewMember, saveCurrentUser, authenticateUser } from '../data/authData';
 import { CompletePortalData, loadPortalContent } from '../data/portalContentData';
+import { loginWithGoogle, loginWithFirebaseEmailPassword, saveUserToFirestore } from '../services/firebase';
 import { SangamLogo } from './SangamLogo';
 import { RegistrationReviewModal, RegistrationReviewData } from './RegistrationReviewModal';
 import { ForgotPasswordModal } from './ForgotPasswordModal';
@@ -44,7 +45,7 @@ import { ForgotPasswordModal } from './ForgotPasswordModal';
 interface MemberAuthPortalGateProps {
   language: Language;
   onLoginSuccess: (user: AuthUser) => void;
-  initialTab?: 'login' | 'register' | 'mobile';
+  initialTab?: 'login' | 'register';
   portalData?: CompletePortalData;
 }
 
@@ -54,8 +55,7 @@ export const MemberAuthPortalGate: React.FC<MemberAuthPortalGateProps> = ({
   initialTab = 'login',
   portalData: propPortalData
 }) => {
-  const [activeTab, setActiveTab] = useState<'login' | 'register' | 'mobile'>(initialTab);
-  const [copiedUrl, setCopiedUrl] = useState(false);
+  const [activeTab, setActiveTab] = useState<'login' | 'register'>(initialTab);
   const [portalData, setPortalData] = useState<CompletePortalData>(
     propPortalData || loadPortalContent()
   );
@@ -83,9 +83,68 @@ export const MemberAuthPortalGate: React.FC<MemberAuthPortalGateProps> = ({
 
   // Login form state
   const [loginPhone, setLoginPhone] = useState('');
-  const [loginPassword, setLoginPassword] = useState('123456');
+  const [loginPassword, setLoginPassword] = useState('');
   const [loginError, setLoginError] = useState('');
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [isForgotPasswordOpen, setIsForgotPasswordOpen] = useState(false);
+  const [googleNewMemberNotice, setGoogleNewMemberNotice] = useState<{
+    email: string;
+    name: string;
+    uid: string;
+  } | null>(null);
+
+  const handleGoogleLogin = async () => {
+    try {
+      setIsGoogleLoading(true);
+      setLoginError('');
+      const authResult = await loginWithGoogle();
+
+      if (authResult.isNewUser) {
+        // New member not in our database -> redirect to fill new registration form!
+        setActiveTab('register');
+        if (authResult.googleProfile.displayName) {
+          setRegFullName(authResult.googleProfile.displayName);
+        }
+        if (authResult.googleProfile.email) {
+          setRegEmail(authResult.googleProfile.email);
+          setRegUsernameChoice('email');
+        }
+        if (authResult.googleProfile.phoneNumber) {
+          setRegPhone(authResult.googleProfile.phoneNumber);
+        }
+        setGoogleNewMemberNotice({
+          email: authResult.googleProfile.email,
+          name: authResult.googleProfile.displayName,
+          uid: authResult.googleProfile.uid
+        });
+
+        // Smoothly scroll down to the registration section
+        setTimeout(() => {
+          const regElement = document.getElementById('new-member-registration-section');
+          if (regElement) {
+            regElement.scrollIntoView({ behavior: 'smooth' });
+          } else {
+            window.scrollTo({ top: 180, behavior: 'smooth' });
+          }
+        }, 150);
+        return;
+      }
+
+      // Existing member found in database
+      saveCurrentUser(authResult.user);
+      onLoginSuccess(authResult.user);
+    } catch (err: any) {
+      console.error('Firebase Google login failed', err);
+      setLoginError(
+        language === 'ta'
+          ? 'Google மூலம் உள்நுழைவதில் சிக்கல் ஏற்பட்டது. மீண்டும் முயற்சிக்கவும்.'
+          : 'Failed to sign in with Google. Please try again.'
+      );
+    } finally {
+      setIsGoogleLoading(false);
+    }
+  };
 
   // Register form state (Personal, Contact, and Detailed Address)
   const [regFullName, setRegFullName] = useState('');
@@ -121,28 +180,16 @@ export const MemberAuthPortalGate: React.FC<MemberAuthPortalGateProps> = ({
   const [regPrivacyLevel, setRegPrivacyLevel] = useState<AddressPrivacyLevel>('public_to_members');
   const [regSuccessUser, setRegSuccessUser] = useState<AuthUser | null>(null);
 
-  const currentWebUrl = window.location.href;
-
-  const handleCopyUrl = () => {
-    navigator.clipboard.writeText(currentWebUrl);
-    setCopiedUrl(true);
-    setTimeout(() => setCopiedUrl(false), 2500);
-  };
-
-  const handleQuickDemoLogin = (account: AuthUser) => {
-    saveCurrentUser(account);
-    onLoginSuccess(account);
-  };
-
-  const handleManualLogin = (e: React.FormEvent) => {
+  const handleManualLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError('');
 
-    if (!loginPhone.trim()) {
+    const identifier = loginPhone.trim();
+    if (!identifier) {
       setLoginError(
         language === 'ta'
-          ? 'தயவுசெய்து மொபைல் எண் அல்லது மின்னஞ்சல் அல்லது பயனர் பெயரை உள்ளிடவும்'
-          : 'Please enter your registered Username, Mobile Number, or Email'
+          ? 'தயவுசெய்து மின்னஞ்சல் அல்லது பதிவு செய்யப்பட்ட மொபைல் எண்ணை உள்ளிடவும்'
+          : 'Please enter your registered Email or Mobile Number'
       );
       return;
     }
@@ -156,17 +203,47 @@ export const MemberAuthPortalGate: React.FC<MemberAuthPortalGateProps> = ({
       return;
     }
 
-    const authRes = authenticateUser(loginPhone.trim(), loginPassword);
-    if (authRes.success && authRes.user) {
-      saveCurrentUser(authRes.user);
-      onLoginSuccess(authRes.user);
-    } else {
-      setLoginError(
-        authRes.error ||
-          (language === 'ta'
-            ? 'தவறான பயனர் பெயர் அல்லது கடவுச்சொல். தயவுசெய்து மீண்டும் சரிபார்க்கவும்.'
-            : 'Invalid credentials. Please verify username and password.')
-      );
+    setIsLoggingIn(true);
+    try {
+      // 1. If identifier looks like an email, attempt Firebase Cloud Email/Password authentication
+      if (identifier.includes('@')) {
+        try {
+          const fbUser = await loginWithFirebaseEmailPassword(identifier, loginPassword);
+          saveCurrentUser(fbUser);
+          onLoginSuccess(fbUser);
+          return;
+        } catch (fbErr: any) {
+          console.warn('Firebase Email/Password login error:', fbErr.message);
+          // If the provider is disabled in Firebase Console, guide user explicitly
+          if (fbErr.message && (fbErr.message.includes('Firebase Console') || fbErr.message.includes('operation-not-allowed'))) {
+            setLoginError(
+              language === 'ta'
+                ? 'Firebase கன்சோலில் Email/Password இன்னும் இயக்கப்படவில்லை. Firebase Console > Authentication > Sign-in method சென்று Email/Password-ஐ இயக்கவும்.'
+                : fbErr.message
+            );
+            return;
+          }
+          // If invalid password/credential, also try local accounts before giving up
+        }
+      }
+
+      // 2. Fall back to local accounts / registered members
+      const authRes = authenticateUser(identifier, loginPassword);
+      if (authRes.success && authRes.user) {
+        saveCurrentUser(authRes.user);
+        onLoginSuccess(authRes.user);
+      } else {
+        setLoginError(
+          authRes.error ||
+            (language === 'ta'
+              ? 'தவறான மின்னஞ்சல்/மொபைல் எண் அல்லது கடவுச்சொல். தயவுசெய்து மீண்டும் சரிபார்க்கவும்.'
+              : 'Invalid Email/Mobile number or password. Please verify your credentials.')
+        );
+      }
+    } catch (err: any) {
+      setLoginError(err.message || 'Login failed. Please try again.');
+    } finally {
+      setIsLoggingIn(false);
     }
   };
 
@@ -245,6 +322,7 @@ export const MemberAuthPortalGate: React.FC<MemberAuthPortalGateProps> = ({
     if (!reviewData) return;
 
     const newUser = registerNewMember({
+      id: googleNewMemberNotice?.uid,
       fullName: reviewData.fullName,
       fullNameTa: reviewData.fullNameTa,
       phone: reviewData.phone,
@@ -263,11 +341,21 @@ export const MemberAuthPortalGate: React.FC<MemberAuthPortalGateProps> = ({
       branch: reviewData.branch,
       occupation: reviewData.occupation,
       bloodGroup: reviewData.bloodGroup,
-      privacyLevel: reviewData.privacyLevel
+      privacyLevel: reviewData.privacyLevel,
+      isRegistrationComplete: true
     });
 
     setIsReviewModalOpen(false);
     setRegSuccessUser(newUser);
+
+    // Persist new user in Firestore database with completed registration flag
+    saveUserToFirestore({
+      ...newUser,
+      isRegistrationComplete: true
+    }).catch((err) =>
+      console.warn('Could not sync newly registered member to Firestore:', err)
+    );
+
     setTimeout(() => {
       onLoginSuccess(newUser);
     }, 1800);
@@ -358,15 +446,15 @@ export const MemberAuthPortalGate: React.FC<MemberAuthPortalGateProps> = ({
         {/* Left Column: Login / Registration Form Card */}
         <div className="lg:col-span-8 bg-white rounded-3xl p-6 sm:p-8 shadow-[0_4px_24px_rgba(0,0,0,0.03)] border border-[#e8e3d8] relative">
           {/* Navigation Pill Switcher */}
-          <div className="flex p-1 bg-[#f5f2eb] rounded-2xl mb-8 border border-[#e5dfd2]">
+          <div className="grid grid-cols-2 p-1.5 bg-[#f5f2eb] rounded-2xl mb-8 border border-[#e5dfd2] gap-1.5">
             <button
               id="gate-tab-login"
               type="button"
               onClick={() => setActiveTab('login')}
-              className={`flex-1 py-3 px-4 rounded-xl text-xs sm:text-sm font-semibold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+              className={`py-3 px-4 rounded-xl text-xs sm:text-sm font-semibold transition-all flex items-center justify-center gap-2 cursor-pointer ${
                 activeTab === 'login'
                   ? 'bg-[#801524] text-white shadow-xs font-bold'
-                  : 'text-stone-600 hover:text-stone-900'
+                  : 'text-stone-600 hover:text-stone-900 hover:bg-white/60'
               }`}
             >
               <KeyRound className="w-4 h-4" />
@@ -377,28 +465,14 @@ export const MemberAuthPortalGate: React.FC<MemberAuthPortalGateProps> = ({
               id="gate-tab-register"
               type="button"
               onClick={() => setActiveTab('register')}
-              className={`flex-1 py-3 px-4 rounded-xl text-xs sm:text-sm font-semibold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+              className={`py-3 px-4 rounded-xl text-xs sm:text-sm font-semibold transition-all flex items-center justify-center gap-2 cursor-pointer ${
                 activeTab === 'register'
                   ? 'bg-[#801524] text-white shadow-xs font-bold'
-                  : 'text-stone-600 hover:text-stone-900'
+                  : 'text-stone-600 hover:text-stone-900 hover:bg-white/60'
               }`}
             >
               <UserCheck className="w-4 h-4" />
               <span>{language === 'ta' ? 'புதிய உறுப்பினர் பதிவு (Register)' : 'New Registration'}</span>
-            </button>
-
-            <button
-              id="gate-tab-mobile"
-              type="button"
-              onClick={() => setActiveTab('mobile')}
-              className={`flex-1 py-3 px-4 rounded-xl text-xs sm:text-sm font-semibold transition-all flex items-center justify-center gap-2 cursor-pointer ${
-                activeTab === 'mobile'
-                  ? 'bg-[#801524] text-white shadow-xs font-bold'
-                  : 'text-stone-600 hover:text-stone-900'
-              }`}
-            >
-              <Smartphone className="w-4 h-4" />
-              <span>{language === 'ta' ? 'மொபைலில் திறக்க (QR)' : 'Mobile Access'}</span>
             </button>
           </div>
 
@@ -407,93 +481,44 @@ export const MemberAuthPortalGate: React.FC<MemberAuthPortalGateProps> = ({
             {/* TAB 1: LOGIN */}
             {activeTab === 'login' && (
               <div className="space-y-6">
-                {/* 1-Click Demo Accounts */}
-                <div className="p-4 sm:p-5 bg-[#faf8f5] rounded-2xl border border-[#e8e3d8] space-y-3.5">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-stone-900 flex items-center gap-1.5">
-                      <Sparkles className="w-4 h-4 text-[#b8860b]" />
-                      {language === 'ta'
-                        ? '1-கிளிக் உடனடி டெமோ உள்நுழைவு'
-                        : '1-Click Instant Demo Role Login'}
+                {/* Google Sign In */}
+                <div className="space-y-2">
+                  <button
+                    type="button"
+                    onClick={handleGoogleLogin}
+                    disabled={isGoogleLoading}
+                    className="w-full py-3 px-4 bg-white hover:bg-stone-50 text-stone-800 font-bold rounded-2xl text-xs sm:text-sm transition-all border border-[#d8d0c2] shadow-2xs flex items-center justify-center gap-3 cursor-pointer disabled:opacity-50"
+                  >
+                    {isGoogleLoading ? (
+                      <div className="w-4 h-4 border-2 border-[#801524] border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                      <svg className="w-4 h-4" viewBox="0 0 24 24">
+                        <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"/>
+                        <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.26v3.15C3.25 21.36 7.33 24 12 24z"/>
+                        <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.26C.46 8.16 0 9.94 0 12s.46 3.84 1.26 5.42l4.02-3.15z"/>
+                        <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.25 2.64 1.26 6.58l4.02 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/>
+                      </svg>
+                    )}
+                    <span>
+                      {isGoogleLoading
+                        ? (language === 'ta' ? 'Google உடன் இணைக்கப்படுகிறது...' : 'Connecting to Google...')
+                        : (language === 'ta' ? 'Google கணக்கு மூலம் உள்நுழைக' : 'Sign In with Google')}
                     </span>
-                    <span className="text-[11px] text-stone-500 font-medium">
-                      {language === 'ta' ? 'அனைத்து நிலைகளையும் சோதிக்க' : 'Test any role instantly'}
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    {/* Super Admin */}
-                    <button
-                      type="button"
-                      onClick={() => handleQuickDemoLogin(DEMO_ACCOUNTS[0])}
-                      className="p-3.5 rounded-2xl border border-[#c8a86b] bg-[#fffdf9] hover:bg-white hover:border-[#b8860b] hover:shadow-xs text-left transition-all group cursor-pointer"
-                    >
-                      <div className="flex items-center justify-between mb-1.5">
-                        <span className="px-2 py-0.5 rounded-md bg-[#801524] text-white font-bold text-[10px]">
-                          👑 {language === 'ta' ? 'சூப்பர் அட்மின்' : 'Super Admin'}
-                        </span>
-                        <Shield className="w-4 h-4 text-[#b8860b]" />
-                      </div>
-                      <p className="font-bold text-xs text-stone-900 line-clamp-1">
-                        {language === 'ta' ? 'மாநிலத் தலைவர்' : 'State President'}
-                      </p>
-                      <p className="text-[10px] text-stone-500 mt-0.5">
-                        {language === 'ta' ? 'நேரடி CMS & எடிட் முழு அதிகாரம்' : 'Full Live CMS & Edit Control'}
-                      </p>
-                    </button>
-
-                    {/* Branch Admin */}
-                    <button
-                      type="button"
-                      onClick={() => handleQuickDemoLogin(DEMO_ACCOUNTS[1])}
-                      className="p-3.5 rounded-2xl border border-[#e8e3d8] bg-white hover:border-sky-400 hover:shadow-xs text-left transition-all group cursor-pointer"
-                    >
-                      <div className="flex items-center justify-between mb-1.5">
-                        <span className="px-2 py-0.5 rounded-md bg-sky-700 text-white font-bold text-[10px]">
-                          🛡️ {language === 'ta' ? 'கிளை நிர்வாகி' : 'Branch Admin'}
-                        </span>
-                      </div>
-                      <p className="font-bold text-xs text-stone-900 line-clamp-1">
-                        {language === 'ta' ? 'மாவட்டச் செயலாளர்' : 'District Secretary'}
-                      </p>
-                      <p className="text-[10px] text-stone-500 mt-0.5">
-                        {language === 'ta' ? 'கிளை & உறுப்பினர் ஒப்புதல்' : 'Branch Approvals & Stats'}
-                      </p>
-                    </button>
-
-                    {/* Registered Member */}
-                    <button
-                      type="button"
-                      onClick={() => handleQuickDemoLogin(DEMO_ACCOUNTS[2])}
-                      className="p-3.5 rounded-2xl border border-[#e8e3d8] bg-white hover:border-emerald-500 hover:shadow-xs text-left transition-all group cursor-pointer"
-                    >
-                      <div className="flex items-center justify-between mb-1.5">
-                        <span className="px-2 py-0.5 rounded-md bg-emerald-700 text-white font-bold text-[10px]">
-                          👤 {language === 'ta' ? 'உறுப்பினர்' : 'Sangam Member'}
-                        </span>
-                      </div>
-                      <p className="font-bold text-xs text-stone-900 line-clamp-1">
-                        {language === 'ta' ? 'பதிவு பெற்ற உறுப்பினர்' : 'Registered Member'}
-                      </p>
-                      <p className="text-[10px] text-stone-500 mt-0.5">
-                        {language === 'ta' ? 'முகவரி புத்தகம் & வரன் விவரம்' : 'Directory & Matrimonial'}
-                      </p>
-                    </button>
-                  </div>
+                  </button>
                 </div>
 
                 {/* Divider */}
                 <div className="relative flex items-center justify-center">
                   <div className="border-t border-[#e8e3d8] w-full"></div>
                   <span className="bg-white px-3 text-xs text-stone-500 uppercase font-semibold tracking-wider">
-                    {language === 'ta' ? 'அல்லது மொபைல் எண் மூலம் உள்நுழைக' : 'OR Login with Mobile / Member ID'}
+                    {language === 'ta' ? 'அல்லது' : 'OR'}
                   </span>
                 </div>
 
                 {/* Login Form */}
                 <form onSubmit={handleManualLogin} className="space-y-4">
                   {loginError && (
-                    <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 font-medium">
+                    <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 font-medium leading-relaxed">
                       {loginError}
                     </div>
                   )}
@@ -501,25 +526,30 @@ export const MemberAuthPortalGate: React.FC<MemberAuthPortalGateProps> = ({
                   <div>
                     <label className="block text-xs font-semibold text-stone-800 mb-1.5">
                       {language === 'ta'
-                        ? 'பயனர் பெயர் / மொபைல் எண் / மின்னஞ்சல்'
-                        : 'Username / Mobile Number / Email'}
+                        ? 'மின்னஞ்சல் அல்லது பதிவு செய்யப்பட்ட மொபைல் எண் *'
+                        : 'Email Address or Registered Mobile Number *'}
                     </label>
                     <div className="relative">
-                      <Phone className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400" />
+                      <Mail className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400" />
                       <input
                         type="text"
                         value={loginPhone}
                         onChange={(e) => setLoginPhone(e.target.value)}
-                        placeholder="எ.கா. 9840012345 / member@gmail.com / MS-ADM-001"
+                        placeholder="e.g. admin@gmail.com / 9840012345"
                         className="w-full pl-10 pr-3 py-3 text-sm rounded-xl border border-[#e0d9cc] bg-[#faf8f5] text-stone-900 placeholder-stone-400 focus:bg-white focus:ring-2 focus:ring-[#b8860b]/20 focus:border-[#b8860b] focus:outline-none transition-all font-medium"
                       />
                     </div>
+                    <p className="text-[11px] text-stone-500 mt-1">
+                      {language === 'ta'
+                        ? 'மின்னஞ்சல் அல்லது பதிவு செய்யப்பட்ட மொபைல் எண்ணை உள்ளிடலாம்.'
+                        : 'Enter your Email or registered member mobile number.'}
+                    </p>
                   </div>
 
                   <div>
                     <div className="flex items-center justify-between mb-1.5">
                       <label className="text-xs font-semibold text-stone-800">
-                        {language === 'ta' ? 'கடவுச்சொல் (Password)' : 'Password'}
+                        {language === 'ta' ? 'கடவுச்சொல் (Password) *' : 'Password *'}
                       </label>
                       <button
                         type="button"
@@ -535,7 +565,7 @@ export const MemberAuthPortalGate: React.FC<MemberAuthPortalGateProps> = ({
                         type="password"
                         value={loginPassword}
                         onChange={(e) => setLoginPassword(e.target.value)}
-                        placeholder="••••••"
+                        placeholder="••••••••"
                         className="w-full pl-10 pr-3 py-3 text-sm rounded-xl border border-[#e0d9cc] bg-[#faf8f5] text-stone-900 focus:bg-white focus:ring-2 focus:ring-[#b8860b]/20 focus:border-[#b8860b] focus:outline-none transition-all font-medium"
                       />
                     </div>
@@ -543,10 +573,23 @@ export const MemberAuthPortalGate: React.FC<MemberAuthPortalGateProps> = ({
 
                   <button
                     type="submit"
-                    className="w-full py-3.5 bg-[#801524] hover:bg-[#68101c] text-white font-bold rounded-xl text-sm transition-all shadow-[0_2px_10px_rgba(128,21,36,0.18)] flex items-center justify-center gap-2 cursor-pointer"
+                    disabled={isLoggingIn}
+                    className="w-full py-3.5 bg-[#801524] hover:bg-[#68101c] text-white font-bold rounded-xl text-sm transition-all shadow-[0_2px_10px_rgba(128,21,36,0.18)] flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
                   >
-                    <KeyRound className="w-4 h-4" />
-                    <span>{language === 'ta' ? 'உள்நுழைவு' : 'Sign In'}</span>
+                    {isLoggingIn ? (
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                      <KeyRound className="w-4 h-4" />
+                    )}
+                    <span>
+                      {isLoggingIn
+                        ? language === 'ta'
+                          ? 'சரிபார்க்கப்படுகிறது...'
+                          : 'Verifying...'
+                        : language === 'ta'
+                        ? 'உள்நுழைவு (Sign In)'
+                        : 'Sign In'}
+                    </span>
                   </button>
                 </form>
               </div>
@@ -554,7 +597,7 @@ export const MemberAuthPortalGate: React.FC<MemberAuthPortalGateProps> = ({
 
             {/* TAB 2: REGISTER (WITH REQUIRED ADDRESS DETAILS STORED DIRECTLY IN ADDRESS BOOK) */}
             {activeTab === 'register' && (
-              <div>
+              <div id="new-member-registration-section">
                 {regSuccessUser ? (
                   <div className="p-8 bg-emerald-50 border border-emerald-200 rounded-3xl text-center space-y-4">
                     <CheckCircle2 className="w-14 h-14 text-emerald-600 mx-auto" />
@@ -575,6 +618,36 @@ export const MemberAuthPortalGate: React.FC<MemberAuthPortalGateProps> = ({
                   </div>
                 ) : (
                   <form onSubmit={handleRegisterSubmit} className="space-y-6">
+                    {/* Google Sign-in New Member Notice (Shown when redirected after Google sign-in) */}
+                    {googleNewMemberNotice && (
+                      <div className="p-4.5 bg-gradient-to-r from-amber-50 to-orange-50 border-2 border-amber-300/90 rounded-2xl text-amber-950 flex items-start gap-3.5 shadow-sm">
+                        <div className="w-10 h-10 rounded-xl bg-amber-200/80 border border-amber-300 flex items-center justify-center shrink-0 mt-0.5 text-amber-900 shadow-xs">
+                          <Sparkles className="w-5 h-5 text-amber-800" />
+                        </div>
+                        <div className="flex-1 space-y-1.5">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-200 text-amber-950 border border-amber-300 flex items-center gap-1">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-700 inline" />
+                              Google Sign-In Verified
+                            </span>
+                            <span className="text-xs font-semibold text-stone-700 font-mono">
+                              {googleNewMemberNotice.email}
+                            </span>
+                          </div>
+                          <h4 className="text-sm font-bold text-amber-950 font-display">
+                            {language === 'ta'
+                              ? 'Google உள்நுழைவு முடிந்தது! புதிய உறுப்பினர் பதிவு'
+                              : 'Google Sign-In Verified! Complete New Member Registration'}
+                          </h4>
+                          <p className="text-xs text-stone-700 leading-relaxed">
+                            {language === 'ta'
+                              ? 'உங்கள் Google கணக்கு வெற்றிகரமாக இணைக்கப்பட்டது. நீங்கள் சங்க தரவுத்தளத்தில் புதிய உறுப்பினர் என்பதால், உங்கள் உறுப்பினர் அடையாள அட்டை மற்றும் முகவரிப் புத்தகத்தில் சேர்க்க கீழ்க்கண்ட படிவத்தைப் பூர்த்தி செய்து பதிவை முடிக்கவும்.'
+                              : 'Your Google account is authenticated. Since you are not yet in our member database, please complete your address & contact details below to finalize your official Sangam registration.'}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
                     {/* Welcome Notice */}
                     <div className="p-4 bg-[#faf6ed] border border-[#e8dcbb] rounded-2xl text-xs text-[#7e5b0b] flex items-start gap-3">
                       <Sparkles className="w-5 h-5 text-[#b8860b] shrink-0 mt-0.5" />
@@ -651,9 +724,16 @@ export const MemberAuthPortalGate: React.FC<MemberAuthPortalGateProps> = ({
                         </div>
 
                         <div>
-                          <label className="block text-xs font-semibold text-stone-700 mb-1">
-                            {language === 'ta' ? 'மின்னஞ்சல் (Email) *' : 'Email Address *'}
-                          </label>
+                          <div className="flex items-center justify-between mb-1">
+                            <label className="block text-xs font-semibold text-stone-700">
+                              {language === 'ta' ? 'மின்னஞ்சல் (Email) *' : 'Email Address *'}
+                            </label>
+                            {googleNewMemberNotice && regEmail.toLowerCase() === googleNewMemberNotice.email.toLowerCase() && (
+                              <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.2 rounded-full">
+                                ✓ Google Verified
+                              </span>
+                            )}
+                          </div>
                           <div className="relative">
                             <Mail className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
                             <input
@@ -706,8 +786,8 @@ export const MemberAuthPortalGate: React.FC<MemberAuthPortalGateProps> = ({
                           <Lock className="w-4 h-4 text-amber-700" />
                           <h4 className="text-xs font-bold text-amber-950">
                             {language === 'ta'
-                              ? 'அடுத்த உள்நுழைவுக்கான பயனர் பெயர் & கடவுச்சொல் (Firebase Auth Ready)'
-                              : 'Username & Password for Next Login (Firebase Auth Ready)'}
+                              ? 'அடுத்த உள்நுழைவுக்கான பயனர் பெயர் & கடவுச்சொல்'
+                              : 'Username & Password for Next Login'}
                           </h4>
                         </div>
 
@@ -1002,85 +1082,6 @@ export const MemberAuthPortalGate: React.FC<MemberAuthPortalGateProps> = ({
                 )}
               </div>
             )}
-
-            {/* TAB 3: MOBILE ACCESS */}
-            {activeTab === 'mobile' && (
-              <div className="space-y-6">
-                <div className="p-6 bg-[#faf8f5] border border-[#e8e3d8] rounded-3xl flex flex-col sm:flex-row items-center gap-6">
-                  <div className="w-36 h-36 bg-white p-3 rounded-2xl shadow-xs border border-[#e8e3d8] shrink-0 flex flex-col items-center justify-center text-center">
-                    <QrCode className="w-24 h-24 text-stone-900" />
-                    <span className="text-[10px] font-bold text-stone-700 mt-1">Scan on Mobile</span>
-                  </div>
-                  <div className="space-y-2 text-center sm:text-left">
-                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#faf6ed] text-[#7e5b0b] border border-[#e8dcbb] text-xs font-bold">
-                      <Smartphone className="w-4 h-4" />
-                      <span>{language === 'ta' ? 'மொபைலில் உடனடி பயன்பாடு' : 'Instant Mobile Web Access'}</span>
-                    </div>
-                    <h4 className="text-base font-bold text-stone-900">
-                      {language === 'ta'
-                        ? 'உங்கள் மொபைல் கேமரா மூலம் ஸ்கேன் செய்து இணையதளத்தை திறக்கவும்'
-                        : 'Scan with your Mobile Camera or Open the Live Cloud Link'}
-                    </h4>
-                    <p className="text-xs text-stone-600">
-                      {language === 'ta'
-                        ? 'இந்த இணையதளம் ஆண்ட்ராய்டு மற்றும் ஐபோன் ஆகிய அனைத்து திரைகளுக்கும் ஏற்றது. மொபைலிலேயே பதிவு செய்து டிஜிட்டல் ஐடி கார்டைப் பெறலாம்.'
-                        : 'Fully responsive for Android & iOS. Register on your mobile device to download your digital ID card instantly.'}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Direct Link Copy */}
-                <div className="space-y-2">
-                  <label className="block text-xs font-bold text-stone-700">
-                    {language === 'ta' ? 'நேரடி இணையதள முகவரி (Live URL)' : 'Live Application URL'}
-                  </label>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="text"
-                      readOnly
-                      value={currentWebUrl}
-                      className="flex-1 px-3.5 py-3 text-xs rounded-xl border border-[#e8e3d8] bg-[#faf8f5] text-stone-800 font-mono"
-                    />
-                    <button
-                      type="button"
-                      onClick={handleCopyUrl}
-                      className="px-5 py-3 bg-stone-900 hover:bg-black text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
-                    >
-                      {copiedUrl ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
-                      <span>
-                        {copiedUrl
-                          ? language === 'ta'
-                            ? 'நகலெடுக்கப்பட்டது!'
-                            : 'Copied!'
-                          : language === 'ta'
-                          ? 'நகல் (Copy)'
-                          : 'Copy'}
-                      </span>
-                    </button>
-                  </div>
-                </div>
-
-                {/* Localhost WiFi instructions */}
-                <div className="p-4 bg-[#faf8f5] rounded-2xl border border-[#e8e3d8] text-xs space-y-2">
-                  <p className="font-bold text-stone-900 flex items-center gap-1.5">
-                    <MapPin className="w-4 h-4 text-[#b8860b]" />
-                    {language === 'ta'
-                      ? 'உங்கள் கணினியில் லோக்கலாக ரன் செய்தால் (Localhost / WiFi Access)'
-                      : 'If Running Locally on Your PC (Localhost / Wi-Fi Access)'}
-                  </p>
-                  <p className="text-stone-600">
-                    {language === 'ta'
-                      ? '1. உங்கள் கணினியும் மொபைலும் ஒரே வைஃபை (Same Wi-Fi Router) இணைப்பில் இருக்க வேண்டும்.'
-                      : '1. Ensure both your PC and smartphone are connected to the same Wi-Fi router or hotspot.'}
-                  </p>
-                  <p className="text-stone-700 font-mono text-[11px] bg-[#f0ece1] p-2.5 rounded-xl">
-                    {language === 'ta'
-                      ? '2. உங்கள் PC-யின் Local IP முகவரியை மொபைல் பிரவுசரில் டைப் செய்யவும் (எ.கா: http://192.168.1.15:3000)'
-                      : '2. Type your PC local IP into mobile browser: http://192.168.1.X:3000'}
-                  </p>
-                </div>
-              </div>
-            )}
           </div>
         </div>
 
@@ -1248,47 +1249,6 @@ export const MemberAuthPortalGate: React.FC<MemberAuthPortalGateProps> = ({
                 </p>
               </div>
             </div>
-          </div>
-        </div>
-
-        {/* State District Branches Grid */}
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-bold text-stone-900 flex items-center gap-2">
-              <Building2 className="w-4 h-4 text-[#b8860b]" />
-              <span>
-                {language === 'ta'
-                  ? 'மாவட்டத் தலைமை கிளை அலுவலகங்கள் (District Branch Secretariats)'
-                  : 'District Branch Secretariats'}
-              </span>
-            </h3>
-            <span className="text-xs text-stone-500 font-medium">
-              {language === 'ta' ? 'தமிழ்நாடு முழுவதும் 48 கிளைகள்' : '48 Branches Across Tamil Nadu'}
-            </span>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
-            {portalData.branches.map((branch) => (
-              <div
-                key={branch.id}
-                className="p-4 rounded-2xl bg-[#faf8f5] border border-[#e8e3d8] space-y-2 hover:border-[#c8a86b]/70 hover:bg-white shadow-2xs transition-all"
-              >
-                <div className="flex items-center justify-between">
-                  <span className="px-2 py-0.5 rounded-md bg-[#faf6ed] text-[#7e5b0b] font-semibold text-[10px] border border-[#e8dcbb]">
-                    {language === 'ta' ? branch.districtTa : branch.districtEn}
-                  </span>
-                  <span className="text-[11px] font-mono font-semibold text-stone-700">
-                    {branch.phone}
-                  </span>
-                </div>
-                <p className="font-bold text-xs text-stone-900">
-                  {language === 'ta' ? branch.branchNameTa : branch.branchNameEn}
-                </p>
-                <p className="text-[11px] text-stone-500 line-clamp-1 font-medium">
-                  {branch.address}
-                </p>
-              </div>
-            ))}
           </div>
         </div>
       </div>

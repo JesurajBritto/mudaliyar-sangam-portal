@@ -23,6 +23,8 @@ import { AuthModal } from './components/AuthModal';
 import { MemberProfileModal } from './components/MemberProfileModal';
 import { loadCurrentUser, saveCurrentUser } from './data/authData';
 import { CompletePortalData, loadPortalContent, savePortalContent, broadcastPortalContentUpdate } from './data/portalContentData';
+import { testConnection, subscribeMembersFromCloud } from './services/firebase';
+import { loadAddressBook, saveAddressBook } from './data/addressBookData';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<TabType>('home');
@@ -32,7 +34,7 @@ export default function App() {
   // Authentication & Role State
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(loadCurrentUser);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
-  const [authModalInitialMode, setAuthModalInitialMode] = useState<'login' | 'register' | 'mobile'>('login');
+  const [authModalInitialMode, setAuthModalInitialMode] = useState<'login' | 'register'>('login');
   const [isProfileModalOpen, setIsProfileModalOpen] = useState<boolean>(false);
 
   // Global Portal Data & CMS State
@@ -55,6 +57,28 @@ export default function App() {
     };
   }, []);
 
+  useEffect(() => {
+    // Validate connection to Firestore on boot as mandated
+    testConnection().catch((err) => {
+      console.warn('Firebase test connection status:', err);
+    });
+
+    // Real-time synchronization of members from Cloud Firestore
+    const unsubscribe = subscribeMembersFromCloud((cloudMembers) => {
+      if (cloudMembers && cloudMembers.length > 0) {
+        const local = loadAddressBook();
+        const map = new Map();
+        local.forEach((m) => map.set(m.id, m));
+        cloudMembers.forEach((m) => map.set(m.id, m));
+        saveAddressBook(Array.from(map.values()));
+      }
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, []);
+
   const handleSavePortalData = (newData: CompletePortalData) => {
     setPortalData(newData);
     savePortalContent(newData);
@@ -66,7 +90,7 @@ export default function App() {
     setIsGlobalCmsOpen(true);
   };
 
-  const handleOpenAuth = (mode: 'login' | 'register' | 'mobile' = 'login') => {
+  const handleOpenAuth = (mode: 'login' | 'register' = 'login') => {
     setAuthModalInitialMode(mode);
     setIsAuthModalOpen(true);
   };

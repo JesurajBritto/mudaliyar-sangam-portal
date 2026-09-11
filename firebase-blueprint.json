@@ -1,0 +1,153 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile with role, branch, and contact information.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "email": { "type": "string", "maxLength": 128 },
+        "fullName": { "type": "string", "maxLength": 150 },
+        "phone": { "type": "string", "maxLength": 20 },
+        "role": { "type": "string", "enum": ["guest", "member", "branch_admin", "super_admin"] },
+        "membershipCode": { "type": "string", "maxLength": 30 },
+        "branch": { "type": "string", "maxLength": 100 },
+        "district": { "type": "string", "maxLength": 100 },
+        "isVerified": { "type": "boolean" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "fullName", "role", "membershipCode"]
+    },
+    "Member": {
+      "title": "Member",
+      "description": "Sangam registered member address book record.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "fullName": { "type": "string", "maxLength": 150 },
+        "fullNameTa": { "type": "string", "maxLength": 150 },
+        "membershipCode": { "type": "string", "maxLength": 30 },
+        "phone": { "type": "string", "maxLength": 20 },
+        "email": { "type": "string", "maxLength": 128 },
+        "branch": { "type": "string", "maxLength": 100 },
+        "occupation": { "type": "string", "maxLength": 100 },
+        "bloodGroup": { "type": "string", "maxLength": 10 },
+        "doorNumber": { "type": "string", "maxLength": 50 },
+        "streetName": { "type": "string", "maxLength": 150 },
+        "areaLocality": { "type": "string", "maxLength": 150 },
+        "city": { "type": "string", "maxLength": 100 },
+        "district": { "type": "string", "maxLength": 100 },
+        "state": { "type": "string", "maxLength": 100 },
+        "pincode": { "type": "string", "maxLength": 10 },
+        "privacyLevel": { "type": "string", "enum": ["public_to_members", "request_only"] },
+        "kulamGotram": { "type": "string", "maxLength": 100 },
+        "nativePlaceOor": { "type": "string", "maxLength": 100 }
+      },
+      "required": ["id", "fullName", "membershipCode", "phone", "district", "privacyLevel"]
+    },
+    "MatrimonialProfile": {
+      "title": "MatrimonialProfile",
+      "description": "Verified bride/groom matrimony record.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "registrationNo": { "type": "string", "maxLength": 40 },
+        "fullName": { "type": "string", "maxLength": 150 },
+        "fullNameTa": { "type": "string", "maxLength": 150 },
+        "gender": { "type": "string", "enum": ["bride", "groom"] },
+        "age": { "type": "number" },
+        "subSect": { "type": "string", "maxLength": 100 },
+        "gotramKulam": { "type": "string", "maxLength": 100 },
+        "kulaDeivam": { "type": "string", "maxLength": 100 },
+        "raasi": { "type": "string", "maxLength": 50 },
+        "nakshatram": { "type": "string", "maxLength": 50 },
+        "dosham": { "type": "string", "maxLength": 50 },
+        "education": { "type": "string", "maxLength": 100 },
+        "profession": { "type": "string", "maxLength": 100 },
+        "annualIncome": { "type": "string", "maxLength": 50 },
+        "nativePlace": { "type": "string", "maxLength": 100 },
+        "contactPhone": { "type": "string", "maxLength": 20 },
+        "verifiedSangamMember": { "type": "boolean" }
+      },
+      "required": ["id", "registrationNo", "fullName", "gender", "age"]
+    },
+    "Donation": {
+      "title": "Donation",
+      "description": "Sangam donation and event ledger contribution entry.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "receiptNo": { "type": "string", "maxLength": 50 },
+        "donorName": { "type": "string", "maxLength": 150 },
+        "memberCode": { "type": "string", "maxLength": 30 },
+        "amount": { "type": "number" },
+        "eventId": { "type": "string", "maxLength": 128 },
+        "eventName": { "type": "string", "maxLength": 150 },
+        "paymentMode": { "type": "string", "enum": ["UPI", "NEFT_RTGS", "Cheque", "Cash"] },
+        "date": { "type": "string", "maxLength": 30 },
+        "purpose": { "type": "string", "maxLength": 200 }
+      },
+      "required": ["id", "receiptNo", "donorName", "amount", "paymentMode"]
+    },
+    "BusinessAd": {
+      "title": "BusinessAd",
+      "description": "Sangam member business advertisement.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "memberId": { "type": "string", "maxLength": 128 },
+        "memberName": { "type": "string", "maxLength": 150 },
+        "businessName": { "type": "string", "maxLength": 150 },
+        "category": { "type": "string", "maxLength": 50 },
+        "adTitle": { "type": "string", "maxLength": 150 },
+        "description": { "type": "string", "maxLength": 1000 },
+        "phone": { "type": "string", "maxLength": 20 },
+        "city": { "type": "string", "maxLength": 100 },
+        "district": { "type": "string", "maxLength": 100 },
+        "status": { "type": "string", "enum": ["pending_review", "approved", "rejected"] },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "memberId", "businessName", "adTitle", "phone", "status"]
+    },
+    "AdminEmail": {
+      "title": "AdminEmail",
+      "description": "Authorized email address granted administrative privileges by super admin.",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string", "maxLength": 128 },
+        "role": { "type": "string", "enum": ["super_admin", "branch_admin"] },
+        "position": { "type": "string", "maxLength": 100 },
+        "positionTa": { "type": "string", "maxLength": 100 },
+        "grantedBy": { "type": "string", "maxLength": 128 },
+        "grantedAt": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["email", "role"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User accounts with roles, branch assignments, and member details."
+    },
+    "/admin_emails/{emailId}": {
+      "schema": "AdminEmail",
+      "description": "Authorized admin and super admin emails list managed by super admin."
+    },
+    "/members/{memberId}": {
+      "schema": "Member",
+      "description": "Sangam member directory address book records."
+    },
+    "/matrimonial/{profileId}": {
+      "schema": "MatrimonialProfile",
+      "description": "Matrimonial profiles for verified members."
+    },
+    "/donations/{donationId}": {
+      "schema": "Donation",
+      "description": "Donation receipts and financial ledger entries."
+    },
+    "/business_ads/{adId}": {
+      "schema": "BusinessAd",
+      "description": "Member business directory advertisements."
+    }
+  }
+}
